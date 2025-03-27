@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yourusername/linuxpanel/pkg/filemanager"
+	"github.com/erniang/LinuxPanel/pkg/filemanager"
 )
 
 // InitFileManagerRoutes 初始化文件管理相关的路由

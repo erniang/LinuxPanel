@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yourusername/linuxpanel/pkg/monitor"
+	"github.com/erniang/LinuxPanel/pkg/monitor"
 )
 
 // InitMonitorRoutes 初始化监控相关的路由

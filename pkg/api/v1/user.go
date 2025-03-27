@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yourusername/linuxpanel/pkg/api"
-	"github.com/yourusername/linuxpanel/pkg/auth"
+	"github.com/erniang/LinuxPanel/pkg/auth"
+	"github.com/erniang/LinuxPanel/pkg/common"
 )
 
 // InitUserRoutes 初始化用户管理相关的路由
@@ -18,7 +18,7 @@ func InitUserRoutes(router *gin.RouterGroup) {
 	
 	// 需要认证的路由
 	userGroup := router.Group("/user")
-	userGroup.Use(api.AuthMiddleware())
+	userGroup.Use(common.AuthMiddleware())
 	{
 		userGroup.GET("/info", getUserInfo)
 		userGroup.POST("/logout", userLogout)
@@ -27,7 +27,7 @@ func InitUserRoutes(router *gin.RouterGroup) {
 	
 	// 仅管理员可访问的路由
 	adminGroup := router.Group("/users")
-	adminGroup.Use(api.AuthMiddleware(), api.AdminOnly())
+	adminGroup.Use(common.AuthMiddleware(), common.AdminOnly())
 	{
 		adminGroup.GET("/list", listUsers)
 		adminGroup.POST("/create", createUser)
@@ -137,7 +137,7 @@ func changePassword(c *gin.Context) {
 		return
 	}
 	
-	user, exists := c.Get("user")
+	_, exists := c.Get("user")
 	if !exists {
 		c.JSON(http.StatusOK, gin.H{
 			"code": -1,
@@ -145,8 +145,6 @@ func changePassword(c *gin.Context) {
 		})
 		return
 	}
-	
-	userObj := user.(*auth.User)
 	
 	// 验证旧密码并更新新密码
 	// 实际项目中应调用auth模块的ChangePassword方法

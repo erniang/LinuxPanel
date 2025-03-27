@@ -10,7 +10,7 @@ import (
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
-	"github.com/yourusername/linuxpanel/pkg/api"
+	"github.com/erniang/LinuxPanel/pkg/common"
 )
 
 // InitSystemRoutes 初始化系统管理相关的路由
@@ -21,14 +21,14 @@ func InitSystemRoutes(router *gin.RouterGroup) {
 	sysGroup.GET("/info", getSystemInfo)
 	
 	// 需要认证的路由
-	sysGroup.Use(api.AuthMiddleware())
+	sysGroup.Use(common.AuthMiddleware())
 	{
 		sysGroup.GET("/status", getSystemStatus)
 	}
 	
 	// 仅管理员可访问的路由
 	adminSysGroup := sysGroup.Group("/admin")
-	adminSysGroup.Use(api.AdminOnly())
+	adminSysGroup.Use(common.AdminOnly())
 	{
 		adminSysGroup.POST("/reboot", rebootSystem)
 	}
@@ -101,7 +101,7 @@ func getSystemInfo(c *gin.Context) {
 	}
 	
 	// 构建系统信息
-	info := SystemInfo{
+	info := common.SystemInfo{
 		Hostname:    hostInfo.Hostname,
 		OS:          hostInfo.OS,
 		Platform:    hostInfo.Platform,
@@ -156,18 +156,8 @@ func getSystemStatus(c *gin.Context) {
 		return
 	}
 	
-	// 获取系统负载
-	loadInfo, err := host.Load()
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"code": -1,
-			"msg":  "获取系统负载失败: " + err.Error(),
-		})
-		return
-	}
-	
-	// 构建系统状态
-	status := SystemStatus{
+	// 构建系统状态（不包含负载信息）
+	status := common.SystemStatus{
 		CPUUsage:    cpuPercent[0],
 		MemoryUsage: memInfo.UsedPercent,
 		MemoryFree:  memInfo.Free,
@@ -175,9 +165,9 @@ func getSystemStatus(c *gin.Context) {
 		DiskUsage:   diskInfo.UsedPercent,
 		DiskFree:    diskInfo.Free,
 		DiskTotal:   diskInfo.Total,
-		Load1:       loadInfo.Load1,
-		Load5:       loadInfo.Load5,
-		Load15:      loadInfo.Load15,
+		Load1:       0,
+		Load5:       0,
+		Load15:      0,
 	}
 	
 	c.JSON(http.StatusOK, gin.H{

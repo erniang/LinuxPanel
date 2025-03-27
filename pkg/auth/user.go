@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -14,23 +13,41 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// 角色常量
+// User roles
 const (
-	RoleAdmin    = "admin"    // 管理员
-	RoleOperator = "operator" // 运维人员
-	RoleUser     = "user"     // 普通用户
+	RoleAdmin    = "admin"
+	RoleOperator = "operator"
+	RoleUser     = "user"
+)
+
+// Common errors
+var (
+	ErrInvalidCredentials = errors.New("无效的用户名或密码")
+	ErrUserNotFound       = errors.New("用户不存在")
+	ErrUserAlreadyExists  = errors.New("用户已存在")
+	ErrInvalidToken       = errors.New("无效的令牌")
+	ErrTokenExpired       = errors.New("令牌已过期")
+	ErrUserDisabled       = errors.New("用户已被禁用")
+	ErrInvalidPassword    = errors.New("密码错误")
+	ErrTokenInvalid       = errors.New("令牌无效或已过期")
+	ErrUsernameExists     = errors.New("用户名已存在")
+	ErrEmailExists        = errors.New("邮箱已被使用")
+	ErrInvalidRole        = errors.New("无效的角色")
+	ErrNoPermission       = errors.New("没有操作权限")
 )
 
 // User 用户信息
 type User struct {
-	ID       int       `json:"id"`
-	Username string    `json:"username"`
-	Password string    `json:"-"` // 密码不返回给客户端
-	Email    string    `json:"email"`
-	Role     string    `json:"role"`
-	Status   int       `json:"status"` // 0-禁用 1-启用
-	CreateAt time.Time `json:"create_at"`
-	UpdateAt time.Time `json:"update_at"`
+	ID          int    `json:"id"`
+	Username    string `json:"username"`
+	Password    string `json:"-"` // 密码不输出到JSON
+	Salt        string `json:"-"` // 盐值不输出到JSON
+	Role        string `json:"role"`
+	Status      int    `json:"status"`
+	LastLogin   int64  `json:"last_login"`
+	CreateTime  int64  `json:"create_time"`
+	Email       string `json:"email,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 // Token 用户令牌
@@ -39,21 +56,6 @@ type Token struct {
 	UserID     int       `json:"userId"`
 	ExpireTime time.Time `json:"expireTime"`
 }
-
-// 错误定义
-var (
-	ErrUserNotFound     = errors.New("用户不存在")
-	ErrInvalidPassword  = errors.New("密码错误")
-	ErrUserDisabled     = errors.New("用户已被禁用")
-	ErrTokenInvalid     = errors.New("令牌无效或已过期")
-	ErrUsernameExists   = errors.New("用户名已存在")
-	ErrEmailExists      = errors.New("邮箱已被使用")
-	ErrInvalidRole      = errors.New("无效的角色")
-	ErrNoPermission     = errors.New("没有操作权限")
-	ErrUserAlreadyExist = errors.New("用户已存在")
-	ErrInvalidToken     = errors.New("无效的令牌")
-	ErrTokenExpired     = errors.New("令牌已过期")
-)
 
 // 全局数据库连接
 var db *sql.DB
@@ -432,12 +434,6 @@ func DeleteUser(id int) error {
 func Logout(tokenStr string) error {
 	_, err := db.Exec("DELETE FROM tokens WHERE token=?", tokenStr)
 	return err
-}
-
-// ValidateToken 验证令牌是否有效
-func ValidateToken(token string) bool {
-	_, exists := userTokenMap[token]
-	return exists
 }
 
 // GetUserFromToken 从令牌获取用户信息

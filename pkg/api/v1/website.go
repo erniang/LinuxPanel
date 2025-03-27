@@ -5,8 +5,8 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yourusername/linuxpanel/pkg/api"
-	"github.com/yourusername/linuxpanel/pkg/web"
+	"github.com/erniang/LinuxPanel/pkg/common"
+	"github.com/erniang/LinuxPanel/pkg/web"
 )
 
 // InitWebSiteRoutes 初始化网站管理相关的路由
@@ -16,7 +16,7 @@ func InitWebSiteRoutes(router *gin.RouterGroup) {
 	
 	// 需要运维或管理权限
 	webGroup := router.Group("/websites")
-	webGroup.Use(api.AuthMiddleware(), api.OperatorOnly())
+	webGroup.Use(common.AuthMiddleware(), common.OperatorOnly())
 	{
 		webGroup.GET("/list", listWebsites)
 		webGroup.GET("/detail/:id", getWebsiteDetail)

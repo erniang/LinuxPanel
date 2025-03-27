@@ -370,7 +370,7 @@ func verifySignature(scriptPath string, registryName string) (bool, error) {
 	}
 	
 	// 读取脚本内容
-	script, err := ioutil.ReadFile(scriptPath)
+	_, err := ioutil.ReadFile(scriptPath)
 	if err != nil {
 		return false, err
 	}
@@ -381,4 +381,16 @@ func verifySignature(scriptPath string, registryName string) (bool, error) {
 	
 	// 这里仅做示例
 	return true, nil
+}
+
+// installDockerApp 安装Docker应用
+func installDockerApp(app AppMeta, installPath string) error {
+	// 模拟通过Docker安装应用
+	fmt.Printf("安装Docker应用 %s 到 %s\n", app.Name, installPath)
+	
+	// 实际项目中这里应该执行Docker pull/run等命令
+	// 这里模拟一个安装过程
+	time.Sleep(500 * time.Millisecond)
+	
+	return nil
 } 

@@ -5,29 +5,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/erniang/LinuxPanel/pkg/types"
 )
-
-// 数据库类型
-type Database struct {
-	Name      string    `json:"name"`
-	Charset   string    `json:"charset"`
-	Collation string    `json:"collation"`
-	Size      int64     `json:"size"`
-	Tables    int       `json:"tables"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-// 数据库用户
-type DBUser struct {
-	Username  string   `json:"username"`
-	Host      string   `json:"host"`
-	Databases []string `json:"databases"`
-	Privileges []string `json:"privileges"`
-}
 
 // InitDatabaseRoutes 初始化数据库管理相关的路由
 func InitDatabaseRoutes(router *gin.RouterGroup) {
@@ -51,7 +33,7 @@ func InitDatabaseRoutes(router *gin.RouterGroup) {
 // listDatabases 列出所有数据库
 func listDatabases(c *gin.Context) {
 	// 模拟数据库列表
-	databases := []Database{
+	databases := []types.Database{
 		{
 			Name:      "wordpress",
 			Charset:   "utf8mb4",
@@ -238,7 +220,7 @@ func recoverDatabase(c *gin.Context) {
 // listDBUsers 列出数据库用户
 func listDBUsers(c *gin.Context) {
 	// 模拟数据库用户列表
-	users := []DBUser{
+	users := []types.DBUser{
 		{
 			Username:   "admin",
 			Host:       "localhost",

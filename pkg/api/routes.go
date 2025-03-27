@@ -2,9 +2,9 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/yourusername/linuxpanel/pkg/api/v1"
-	"github.com/yourusername/linuxpanel/pkg/core"
-	"github.com/yourusername/linuxpanel/pkg/monitor"
+	"github.com/erniang/LinuxPanel/pkg/api/v1"
+	"github.com/erniang/LinuxPanel/pkg/core"
+	"github.com/erniang/LinuxPanel/pkg/monitor"
 )
 
 // InitRoutes 初始化所有路由
@@ -21,7 +21,7 @@ func InitRoutes(router *gin.Engine, config *core.Config) {
 		v1.InitUserRoutes(v1Group)
 		v1.InitAppStoreRoutes(v1Group)
 		v1.InitWebSiteRoutes(v1Group)
-		v1.InitSecurityRoutes(v1Group)
+		v1.InitSystemRoutes(v1Group)
 		v1.InitDatabaseRoutes(v1Group)
 	}
 	

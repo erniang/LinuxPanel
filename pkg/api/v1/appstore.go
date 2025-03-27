@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yourusername/linuxpanel/pkg/store"
+	"github.com/erniang/LinuxPanel/pkg/store"
 )
 
 // InitAppStoreRoutes 初始化应用商店相关的路由

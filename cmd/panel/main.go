@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yourusername/linuxpanel/pkg/api"
-	"github.com/yourusername/linuxpanel/pkg/core"
+	"github.com/erniang/LinuxPanel/pkg/api"
+	"github.com/erniang/LinuxPanel/pkg/core"
 )
 
 var (

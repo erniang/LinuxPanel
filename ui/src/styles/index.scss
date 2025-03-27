@@ -1,0 +1,149 @@
+/* 全局样式文件 */
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* 公共样式 */
+.page-container {
+  padding: 20px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+/* 数据卡片 */
+.status-cards {
+  margin-bottom: 20px;
+  
+  .el-card {
+    margin-bottom: 20px;
+    border-radius: 8px;
+    
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .card-info {
+      margin-top: 10px;
+      text-align: center;
+      
+      span {
+        display: block;
+        margin: 5px 0;
+        color: #606266;
+      }
+    }
+  }
+}
+
+/* 主题色定义 */
+.theme-primary {
+  color: #409EFF;
+}
+
+.theme-success {
+  color: #67C23A;
+}
+
+.theme-warning {
+  color: #E6A23C;
+}
+
+.theme-danger {
+  color: #F56C6C;
+}
+
+.theme-info {
+  color: #909399;
+}
+
+/* 数据标签样式 */
+.data-label {
+  font-size: 14px;
+  color: #606266;
+  margin-right: 10px;
+}
+
+.data-value {
+  font-size: 14px;
+  color: #303133;
+}
+
+/* 跳转链接 */
+.text-link {
+  color: #409EFF;
+  cursor: pointer;
+  
+  &:hover {
+    color: #66b1ff;
+    text-decoration: underline;
+  }
+}
+
+/* 图表容器 */
+.chart-container {
+  height: 300px;
+  width: 100%;
+}
+
+/* 文件项样式 */
+.file-item {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  
+  .el-icon {
+    margin-right: 5px;
+    font-size: 18px;
+  }
+}
+
+/* 网站卡片 */
+.website-status {
+  text-align: center;
+  padding: 20px 0;
+  
+  h3 {
+    font-size: 28px;
+    margin: 0;
+    color: #409EFF;
+  }
+  
+  p {
+    margin: 10px 0 0;
+    color: #606266;
+  }
+}
+
+/* 工具栏 */
+.toolbar {
+  margin-bottom: 20px;
+}
+
+/* 分类过滤栏 */
+.filter-bar {
+  margin-bottom: 20px;
+} 

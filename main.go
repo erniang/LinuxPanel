@@ -3,11 +3,13 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
-	"github.com/yourusername/linuxpanel/pkg/api"
+	"github.com/erniang/LinuxPanel/pkg/api"
 )
 
 var (

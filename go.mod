@@ -1,4 +1,4 @@
-module github.com/yourusername/linuxpanel
+module github.com/erniang/LinuxPanel
 
 go 1.21
 

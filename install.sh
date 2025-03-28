@@ -716,7 +716,7 @@ fix_appstore_component() {
     <div class="app-list" v-if="!loading">
       <div class="app-card" v-for="app in apps" :key="app.id">
         <div class="app-icon">
-          <el-icon><Box /></el-icon>
+          <i class="fa fa-cube"></i>
         </div>
         <div class="app-info">
           <h3>{{ app.name }}</h3>
@@ -735,7 +735,7 @@ fix_appstore_component() {
       </div>
     </div>
     <div v-else class="loading-container">
-      <el-skeleton :rows="10" animated />
+      <div class="loading-placeholder" v-for="i in 5" :key="i"></div>
     </div>
   </div>
 </template>
@@ -827,6 +827,12 @@ export default {
 }
 .loading-container {
   padding: 20px;
+}
+.loading-placeholder {
+  height: 120px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  margin-bottom: 20px;
 }
 </style>
 EOL

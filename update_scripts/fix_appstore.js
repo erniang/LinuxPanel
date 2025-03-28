@@ -1,4 +1,18 @@
-<template>
+#!/usr/bin/env node
+
+/**
+ * 此脚本用于修复LinuxPanel前端应用商店组件的构建问题
+ * 问题: Cannot read properties of null (reading 'content')
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+// 应用商店组件路径
+const appstorePath = path.join(process.cwd(), 'ui/src/views/appstore/index.vue');
+
+// 修复后的组件内容
+const fixedContent = `<template>
   <div class="app-store-container">
     <h1>应用商店</h1>
     <div class="app-list" v-if="!loading">
@@ -51,17 +65,17 @@ export default {
       setTimeout(() => {
         app.installed = true
         this.installing = null
-        this.$message.success(`${app.name} 安装成功`)
+        this.$message.success(\`\${app.name} 安装成功\`)
       }, 1500)
     },
     uninstallApp(app) {
-      this.$confirm(`确定要卸载 ${app.name} 吗?`, '确认操作', {
+      this.$confirm(\`确定要卸载 \${app.name} 吗?\`, '确认操作', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
       }).then(() => {
         app.installed = false
-        this.$message.success(`${app.name} 已卸载`)
+        this.$message.success(\`\${app.name} 已卸载\`)
       }).catch(() => {})
     }
   }
@@ -122,4 +136,21 @@ export default {
   border-radius: 4px;
   margin-bottom: 20px;
 }
-</style> 
+</style>`;
+
+console.log('开始修复应用商店组件...');
+
+try {
+  // 备份原文件
+  if (fs.existsSync(appstorePath)) {
+    fs.copyFileSync(appstorePath, `${appstorePath}.bak`);
+    console.log('原文件已备份为 index.vue.bak');
+  }
+
+  // 写入修复后的内容
+  fs.writeFileSync(appstorePath, fixedContent, 'utf8');
+  console.log('应用商店组件修复成功！');
+} catch (error) {
+  console.error('修复过程中出错:', error.message);
+  process.exit(1);
+} 

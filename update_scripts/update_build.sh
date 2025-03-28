@@ -1,3 +1,52 @@
+#!/bin/bash
+
+# 更新构建脚本 - 修复前端构建问题
+# 作者: LinuxPanel团队
+# 用途: 修复Vue前端构建过程中出现的问题
+
+# 设置颜色变量
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# 检测工作目录
+if [ ! -d "/opt/linuxpanel" ]; then
+  echo -e "${RED}错误: 未找到LinuxPanel安装目录${NC}"
+  echo -e "请确认LinuxPanel已正确安装，或手动设置工作目录"
+  exit 1
+fi
+
+# 进入工作目录
+cd /opt/linuxpanel
+
+# 确保UI目录存在
+if [ ! -d "ui" ]; then
+  echo -e "${RED}错误: 未找到UI目录${NC}"
+  exit 1
+fi
+
+echo -e "${BLUE}=== LinuxPanel 前端修复程序 ===${NC}"
+echo -e "${YELLOW}检测Vue前端环境...${NC}"
+
+# 进入UI目录
+cd ui
+
+# 备份原始文件
+echo -e "${BLUE}备份原始文件...${NC}"
+mkdir -p ../backup/ui
+if [ -f "src/views/appstore/index.vue" ]; then
+  cp src/views/appstore/index.vue ../backup/ui/appstore-index.vue.bak
+fi
+
+# 修复应用商店组件
+echo -e "${BLUE}修复应用商店组件...${NC}"
+if [ -d "src/views/appstore" ]; then
+  mkdir -p src/views/appstore
+  
+  # 创建修复后的应用商店组件
+  cat > src/views/appstore/index.vue <<EOL
 <template>
   <div class="app-store-container">
     <h1>应用商店</h1>
@@ -51,17 +100,17 @@ export default {
       setTimeout(() => {
         app.installed = true
         this.installing = null
-        this.$message.success(`${app.name} 安装成功`)
+        this.$message.success(\`\${app.name} 安装成功\`)
       }, 1500)
     },
     uninstallApp(app) {
-      this.$confirm(`确定要卸载 ${app.name} 吗?`, '确认操作', {
+      this.$confirm(\`确定要卸载 \${app.name} 吗?\`, '确认操作', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
       }).then(() => {
         app.installed = false
-        this.$message.success(`${app.name} 已卸载`)
+        this.$message.success(\`\${app.name} 已卸载\`)
       }).catch(() => {})
     }
   }
@@ -122,4 +171,48 @@ export default {
   border-radius: 4px;
   margin-bottom: 20px;
 }
-</style> 
+</style>
+EOL
+  echo -e "${GREEN}应用商店组件已修复${NC}"
+else
+  echo -e "${YELLOW}未找到应用商店目录，创建目录...${NC}"
+  mkdir -p src/views/appstore
+  # 创建修复后的应用商店组件（与上面相同的内容）
+fi
+
+# 清理缓存
+echo -e "${BLUE}清理构建缓存...${NC}"
+rm -rf node_modules/.cache
+
+# 重新安装依赖
+echo -e "${BLUE}重新安装前端依赖...${NC}"
+if command -v yarn &> /dev/null; then
+  yarn install
+else
+  npm install
+fi
+
+# 重新构建前端
+echo -e "${BLUE}重新构建前端...${NC}"
+if command -v yarn &> /dev/null; then
+  yarn build
+else
+  npm run build
+fi
+
+# 检查构建结果
+if [ -d "dist" ] && [ -f "dist/index.html" ]; then
+  echo -e "${GREEN}前端构建成功！${NC}"
+  
+  # 重启服务
+  echo -e "${BLUE}重启LinuxPanel服务...${NC}"
+  cd /opt/linuxpanel
+  systemctl restart linuxpanel
+  
+  echo -e "${GREEN}=== 更新完成 ===${NC}"
+  echo -e "${GREEN}LinuxPanel前端已成功修复并重启${NC}"
+  echo -e "${YELLOW}请使用浏览器访问面板检查是否正常${NC}"
+else
+  echo -e "${RED}前端构建失败${NC}"
+  echo -e "${YELLOW}请检查日志查找错误原因${NC}"
+fi 

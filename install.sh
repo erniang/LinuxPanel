@@ -2,7 +2,7 @@
 
 # 轻量级Linux面板一键安装脚本
 # 作者: LinuxPanel开发团队
-# 版本: 1.0.0
+# 版本: 2.0.0
 
 # 设置颜色变量
 RED='\033[0;31m'
@@ -54,7 +54,7 @@ EOF
     apt-get update -y
     
     # 安装基本依赖
-    apt-get install -y curl wget git build-essential
+    apt-get install -y curl wget git build-essential sqlite3
     
     # 安装Node.js
     echo -e "${BLUE}正在安装Node.js...${NC}"
@@ -63,18 +63,9 @@ EOF
     }
     apt-get install -y nodejs
     
-    # 安装MySQL或MariaDB (如果MySQL不可用，则使用MariaDB)
-    echo -e "${BLUE}正在安装数据库...${NC}"
-    if apt-cache show mysql-server &>/dev/null; then
-        apt-get install -y mysql-server
-        systemctl enable mysql.service
-        systemctl start mysql.service
-    else
-        echo -e "${YELLOW}MySQL不可用，安装MariaDB作为替代${NC}"
-        apt-get install -y mariadb-server
-        systemctl enable mariadb.service
-        systemctl start mariadb.service
-    fi
+    # MySQL/MariaDB现在是可选的，不再作为必需依赖
+    echo -e "${BLUE}跳过数据库安装，使用SQLite作为面板数据存储...${NC}"
+    echo -e "${GREEN}提示: 您可以稍后通过面板应用商店安装MySQL或MariaDB${NC}"
     
     # 安装Nginx
     echo -e "${BLUE}正在安装Nginx...${NC}"
@@ -85,17 +76,17 @@ EOF
     # 安装或升级Go
     echo -e "${BLUE}正在检查Go环境...${NC}"
     GO_VERSION=$(go version 2>/dev/null | grep -oP 'go\K[0-9.]+' || echo "0")
-    if [[ "$(printf '%s\n' "1.15" "$GO_VERSION" | sort -V | head -n1)" != "1.15" ]]; then
-        echo -e "${YELLOW}Go版本 $GO_VERSION 不满足要求，正在安装Go 1.15...${NC}"
-        # 下载并安装Go 1.15
-        wget https://dl.google.com/go/go1.15.15.linux-amd64.tar.gz -O /tmp/go1.15.15.linux-amd64.tar.gz
+    if [[ "$(printf '%s\n' "1.16" "$GO_VERSION" | sort -V | head -n1)" != "1.16" ]]; then
+        echo -e "${YELLOW}Go版本 $GO_VERSION 不满足要求，正在安装Go 1.16...${NC}"
+        # 下载并安装Go 1.16
+        wget https://dl.google.com/go/go1.16.15.linux-amd64.tar.gz -O /tmp/go1.16.15.linux-amd64.tar.gz
         rm -rf /usr/local/go
-        tar -C /usr/local -xzf /tmp/go1.15.15.linux-amd64.tar.gz
+        tar -C /usr/local -xzf /tmp/go1.16.15.linux-amd64.tar.gz
         if ! grep -q "export PATH=\$PATH:/usr/local/go/bin" /root/.bashrc; then
             echo 'export PATH=$PATH:/usr/local/go/bin' >> /root/.bashrc
         fi
         export PATH=$PATH:/usr/local/go/bin
-        rm -f /tmp/go1.15.15.linux-amd64.tar.gz
+        rm -f /tmp/go1.16.15.linux-amd64.tar.gz
     fi
     
     echo -e "${GREEN}依赖安装完成${NC}"
@@ -153,12 +144,24 @@ fix_import_cycle() {
     
     # 降低Go版本要求
     cd /opt/linuxpanel
-    sed -i 's/go 1.21/go 1.15/' go.mod
+    sed -i 's/go 1.21/go 1.16/' go.mod
     
-    # 修改依赖版本
+    # 修改为完全兼容的gopsutil版本
+    sed -i 's/github.com\/shirou\/gopsutil\/v3 v3.24.1/github.com\/shirou\/gopsutil\/v3 v3.21.8/' go.mod
+    sed -i 's/github.com\/shirou\/gopsutil\/v3 v3.21.12/github.com\/shirou\/gopsutil\/v3 v3.21.8/' go.mod
+    sed -i 's/github.com\/shirou\/gopsutil\/v3 v3.22.2/github.com\/shirou\/gopsutil\/v3 v3.21.8/' go.mod
+    
+    # 彻底修复ReadDir问题 - 使用Go 1.16兼容的方法
+    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/f\.ReadDir(/f.Readdir(0)/g' {} \;
+    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/os\.ReadDir(/ioutil.ReadDir(/g' {} \;
+    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/ReadDir(/Readdir(0)/g' {} \;
+    
+    # 修复引用问题 - 确保导入ioutil包
+    find /opt/linuxpanel -type f -name "*.go" -exec grep -l "os.ReadDir" {} \; | xargs -I{} sed -i 's/import (/import (\n\t"io\/ioutil"/g' {}
+    
+    # 其他修改依赖版本
     sed -i 's/github.com\/gin-gonic\/gin v1.9.1/github.com\/gin-gonic\/gin v1.7.7/' go.mod
     sed -i 's/github.com\/mattn\/go-sqlite3 v1.14.22/github.com\/mattn\/go-sqlite3 v1.14.8/' go.mod
-    sed -i 's/github.com\/shirou\/gopsutil\/v3 v3.24.1/github.com\/shirou\/gopsutil\/v3 v3.21.12/' go.mod
     sed -i 's/golang.org\/x\/crypto v0.9.0/golang.org\/x\/crypto v0.0.0-20210711020723-a769d52b0f97/' go.mod
     sed -i 's/gopkg.in\/yaml.v3 v3.0.1/gopkg.in\/yaml.v3 v3.0.0-20210107192922-496545a6307b/' go.mod
     
@@ -168,6 +171,113 @@ fix_import_cycle() {
     # 创建common包并移动共享代码
     mkdir -p /opt/linuxpanel/pkg/common
     
+    # 修改数据库相关配置，改为使用SQLite
+    cat > /opt/linuxpanel/pkg/database/sqlite.go <<EOL
+package database
+
+import (
+	"database/sql"
+	"log"
+	"os"
+	"path/filepath"
+
+	_ "github.com/mattn/go-sqlite3"
+)
+
+// DB 数据库连接
+var DB *sql.DB
+
+// Init 初始化数据库连接
+func Init(dbPath string) error {
+	// 确保目录存在
+	dir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	var err error
+	DB, err = sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return err
+	}
+
+	// 测试连接
+	if err = DB.Ping(); err != nil {
+		return err
+	}
+
+	log.Println("数据库连接成功")
+	
+	// 初始化表结构
+	if err = initTables(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Close 关闭数据库连接
+func Close() {
+	if DB != nil {
+		DB.Close()
+	}
+}
+
+// 初始化表结构
+func initTables() error {
+	// 用户表
+	_, err := DB.Exec(\`
+	CREATE TABLE IF NOT EXISTS users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT NOT NULL UNIQUE,
+		password TEXT NOT NULL,
+		role TEXT NOT NULL,
+		email TEXT,
+		real_name TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		last_login TIMESTAMP
+	);\`)
+	if err != nil {
+		return err
+	}
+
+	// 网站表
+	_, err = DB.Exec(\`
+	CREATE TABLE IF NOT EXISTS websites (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		domain TEXT NOT NULL,
+		path TEXT NOT NULL,
+		port INTEGER,
+		status INTEGER DEFAULT 1,
+		php_version TEXT,
+		ssl_enabled INTEGER DEFAULT 0,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);\`)
+	if err != nil {
+		return err
+	}
+
+	// 检查是否需要初始化管理员账户
+	var count int
+	err = DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
+	if err != nil {
+		return err
+	}
+
+	// 如果没有用户，创建默认管理员
+	if count == 0 {
+		_, err = DB.Exec(\`INSERT INTO users (username, password, role) VALUES ('admin', '$2a$10$uIBEsK0BbGQ6Lr.2oHjy0uKBFbXzS9YBjaoBd1tYYb8JkjWVZzWQ6', 'admin');\`)
+		if err != nil {
+			return err
+		}
+		log.Println("已创建默认管理员账户: admin/admin123")
+	}
+
+	return nil
+}
+EOL
+
     # 在pkg/common中创建middleware.go文件
     cat > /opt/linuxpanel/pkg/common/middleware.go <<EOL
 package common
@@ -270,6 +380,26 @@ func OperatorOnly() gin.HandlerFunc {
 }
 EOL
 
+    # 修改config.yaml使用SQLite
+    cat > /opt/linuxpanel/configs/config.yaml <<EOL
+server:
+  port: 8080
+  host: "0.0.0.0"
+  
+database:
+  type: "sqlite"
+  path: "/var/lib/linuxpanel/data/panel.db"
+  
+paths:
+  data: "/var/lib/linuxpanel/data"
+  logs: "/var/log/linuxpanel"
+  websites: "/var/www"
+  
+security:
+  jwt_secret: "linuxpanel-secret-key-change-in-production"
+  session_timeout: 86400
+EOL
+
     # 在pkg/common中创建types.go文件
     cat > /opt/linuxpanel/pkg/common/types.go <<EOL
 package common
@@ -339,11 +469,11 @@ EOL
 
     # 修改pkg/api/middleware.go文件
     cat > /opt/linuxpanel/pkg/api/middleware.go <<EOL
-// 这个文件不再使用，转而使用common包中的中间件
-package api
+    // 这个文件不再使用，转而使用common包中的中间件
+    package api
 
-// 中间件相关功能已移至common包
-EOL
+    // 中间件相关功能已移至common包
+    EOL
 
     # 替换import路径
     find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/api\.AuthMiddleware/common\.AuthMiddleware/g' {} \;
@@ -460,7 +590,7 @@ EOL
 create_config() {
     echo -e "${BLUE}创建配置文件...${NC}"
     
-    # 创建主配置文件
+    # 创建主配置文件 - 使用SQLite
     cat > /etc/linuxpanel/config.yaml <<EOL
 server:
   port: 8080
@@ -479,6 +609,9 @@ security:
   jwt_secret: "$(openssl rand -base64 32)"
   session_timeout: 86400
 EOL
+    
+    # 确保SQLite数据库目录存在
+    mkdir -p /var/lib/linuxpanel/data
     
     echo -e "${GREEN}配置文件创建完成${NC}"
 }

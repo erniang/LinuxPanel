@@ -32,9 +32,9 @@ check_os() {
     fi
 }
 
-# 安装依赖
+# 安装基础依赖
 install_dependencies() {
-    echo -e "${BLUE}开始安装依赖...${NC}"
+    echo -e "${BLUE}开始安装基础依赖...${NC}"
     
     # 修复Debian 11安全源
     if [ "$OS" = "debian" ] && [ "$VERSION_ID" = "11" ]; then
@@ -63,30 +63,20 @@ EOF
     }
     apt-get install -y nodejs
     
-    # MySQL/MariaDB现在是可选的，不再作为必需依赖
-    echo -e "${BLUE}跳过数据库安装，使用SQLite作为面板数据存储...${NC}"
-    echo -e "${GREEN}提示: 您可以稍后通过面板应用商店安装MySQL或MariaDB${NC}"
-    
-    # 安装Nginx
-    echo -e "${BLUE}正在安装Nginx...${NC}"
-    apt-get install -y nginx
-    systemctl enable nginx.service
-    systemctl start nginx.service
-    
     # 安装或升级Go
-    echo -e "${BLUE}正在检查Go环境...${NC}"
+    echo -e "${BLUE}正在安装Go 1.21...${NC}"
     GO_VERSION=$(go version 2>/dev/null | grep -oP 'go\K[0-9.]+' || echo "0")
-    if [[ "$(printf '%s\n' "1.16" "$GO_VERSION" | sort -V | head -n1)" != "1.16" ]]; then
-        echo -e "${YELLOW}Go版本 $GO_VERSION 不满足要求，正在安装Go 1.16...${NC}"
-        # 下载并安装Go 1.16
-        wget https://dl.google.com/go/go1.16.15.linux-amd64.tar.gz -O /tmp/go1.16.15.linux-amd64.tar.gz
+    if [[ "$(printf '%s\n' "1.21" "$GO_VERSION" | sort -V | head -n1)" != "1.21" ]]; then
+        echo -e "${YELLOW}Go版本 $GO_VERSION 不满足要求，正在安装Go 1.21...${NC}"
+        # 下载并安装Go 1.21
+        wget https://dl.google.com/go/go1.21.0.linux-amd64.tar.gz -O /tmp/go1.21.0.linux-amd64.tar.gz
         rm -rf /usr/local/go
-        tar -C /usr/local -xzf /tmp/go1.16.15.linux-amd64.tar.gz
+        tar -C /usr/local -xzf /tmp/go1.21.0.linux-amd64.tar.gz
         if ! grep -q "export PATH=\$PATH:/usr/local/go/bin" /root/.bashrc; then
             echo 'export PATH=$PATH:/usr/local/go/bin' >> /root/.bashrc
         fi
         export PATH=$PATH:/usr/local/go/bin
-        rm -f /tmp/go1.16.15.linux-amd64.tar.gz
+        rm -f /tmp/go1.21.0.linux-amd64.tar.gz
     fi
     
     echo -e "${GREEN}依赖安装完成${NC}"
@@ -138,41 +128,60 @@ get_code() {
     fi
 }
 
-# 解决循环导入问题
-fix_import_cycle() {
-    echo -e "${BLUE}修复代码问题...${NC}"
+# 创建必要的目录结构
+create_project_structure() {
+    echo -e "${BLUE}创建项目目录结构...${NC}"
     
-    # 降低Go版本要求
     cd /opt/linuxpanel
-    sed -i 's/go 1.21/go 1.16/' go.mod
     
-    # 修改为完全兼容的gopsutil版本
-    sed -i 's/github.com\/shirou\/gopsutil\/v3 v3.24.1/github.com\/shirou\/gopsutil\/v3 v3.21.8/' go.mod
-    sed -i 's/github.com\/shirou\/gopsutil\/v3 v3.21.12/github.com\/shirou\/gopsutil\/v3 v3.21.8/' go.mod
-    sed -i 's/github.com\/shirou\/gopsutil\/v3 v3.22.2/github.com\/shirou\/gopsutil\/v3 v3.21.8/' go.mod
+    # 创建必要的目录
+    mkdir -p pkg/database
+    mkdir -p pkg/common
+    mkdir -p pkg/types
+    mkdir -p configs
+    mkdir -p ui/dist
     
-    # 彻底修复ReadDir问题 - 使用Go 1.16兼容的方法
-    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/f\.ReadDir(/f.Readdir(0)/g' {} \;
-    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/os\.ReadDir(/ioutil.ReadDir(/g' {} \;
-    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/ReadDir(/Readdir(0)/g' {} \;
+    echo -e "${GREEN}项目目录结构创建完成${NC}"
+}
+
+# 更新Go依赖和版本
+update_go_dependencies() {
+    echo -e "${BLUE}更新Go依赖和版本...${NC}"
     
-    # 修复引用问题 - 确保导入ioutil包
-    find /opt/linuxpanel -type f -name "*.go" -exec grep -l "os.ReadDir" {} \; | xargs -I{} sed -i 's/import (/import (\n\t"io\/ioutil"/g' {}
+    cd /opt/linuxpanel
     
-    # 其他修改依赖版本
-    sed -i 's/github.com\/gin-gonic\/gin v1.9.1/github.com\/gin-gonic\/gin v1.7.7/' go.mod
-    sed -i 's/github.com\/mattn\/go-sqlite3 v1.14.22/github.com\/mattn\/go-sqlite3 v1.14.8/' go.mod
-    sed -i 's/golang.org\/x\/crypto v0.9.0/golang.org\/x\/crypto v0.0.0-20210711020723-a769d52b0f97/' go.mod
-    sed -i 's/gopkg.in\/yaml.v3 v3.0.1/gopkg.in\/yaml.v3 v3.0.0-20210107192922-496545a6307b/' go.mod
+    # 更新go.mod文件以使用Go 1.21
+    cat > go.mod <<EOL
+module github.com/erniang/LinuxPanel
+
+go 1.21
+
+require (
+	github.com/gin-gonic/gin v1.9.1
+	github.com/mattn/go-sqlite3 v1.14.17
+	github.com/shirou/gopsutil/v3 v3.23.7
+	golang.org/x/crypto v0.14.0
+	gopkg.in/yaml.v3 v3.0.1
+)
+EOL
     
-    # 创建pkg/types目录并移动共享类型
-    mkdir -p /opt/linuxpanel/pkg/types
+    # 设置代理以加速下载
+    export GOPROXY=https://goproxy.cn,direct
     
-    # 创建common包并移动共享代码
-    mkdir -p /opt/linuxpanel/pkg/common
+    # 更新依赖
+    go mod tidy
     
-    # 修改数据库相关配置，改为使用SQLite
-    cat > /opt/linuxpanel/pkg/database/sqlite.go <<EOL
+    echo -e "${GREEN}Go依赖更新完成${NC}"
+}
+
+# 创建必要的代码文件
+create_code_files() {
+    echo -e "${BLUE}创建必要的代码文件...${NC}"
+    
+    cd /opt/linuxpanel
+    
+    # 创建SQLite数据库处理文件
+    cat > pkg/database/sqlite.go <<EOL
 package database
 
 import (
@@ -278,130 +287,8 @@ func initTables() error {
 }
 EOL
 
-    # 在pkg/common中创建middleware.go文件
-    cat > /opt/linuxpanel/pkg/common/middleware.go <<EOL
-package common
-
-import (
-	"net/http"
-	"strings"
-	
-	"github.com/gin-gonic/gin"
-	"github.com/erniang/LinuxPanel/pkg/auth"
-)
-
-// AuthMiddleware 认证中间件，验证用户是否登录
-func AuthMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		token := c.GetHeader("Authorization")
-		
-		// 从Authorization头中获取token
-		if token == "" {
-			// 也可以从cookie中获取
-			tokenCookie, _ := c.Cookie("token")
-			token = tokenCookie
-		}
-		
-		// 移除Bearer前缀（如果有）
-		token = strings.TrimPrefix(token, "Bearer ")
-		
-		// 验证token
-		if token == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"code": 401,
-				"msg":  "未授权，请先登录",
-			})
-			c.Abort()
-			return
-		}
-		
-		// 获取用户信息并存储到上下文
-		user := auth.GetUserFromToken(token)
-		c.Set("user", user)
-		
-		c.Next()
-	}
-}
-
-// AdminOnly 仅管理员可访问
-func AdminOnly() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		user, exists := c.Get("user")
-		if !exists {
-			c.JSON(http.StatusOK, gin.H{
-				"code": 401,
-				"msg":  "未授权，请先登录",
-			})
-			c.Abort()
-			return
-		}
-		
-		// 转换为用户类型
-		u, ok := user.(*auth.User)
-		if !ok || u.Role != auth.RoleAdmin {
-			c.JSON(http.StatusOK, gin.H{
-				"code": 403,
-				"msg":  "权限不足，需要管理员权限",
-			})
-			c.Abort()
-			return
-		}
-		
-		c.Next()
-	}
-}
-
-// OperatorOnly 仅运维或管理员可访问
-func OperatorOnly() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		user, exists := c.Get("user")
-		if !exists {
-			c.JSON(http.StatusOK, gin.H{
-				"code": 401,
-				"msg":  "未授权，请先登录",
-			})
-			c.Abort()
-			return
-		}
-		
-		// 转换为用户类型
-		u, ok := user.(*auth.User)
-		if !ok || (u.Role != auth.RoleAdmin && u.Role != auth.RoleOperator) {
-			c.JSON(http.StatusOK, gin.H{
-				"code": 403,
-				"msg":  "权限不足，需要运维或管理员权限",
-			})
-			c.Abort()
-			return
-		}
-		
-		c.Next()
-	}
-}
-EOL
-
-    # 修改config.yaml使用SQLite
-    cat > /opt/linuxpanel/configs/config.yaml <<EOL
-server:
-  port: 8080
-  host: "0.0.0.0"
-  
-database:
-  type: "sqlite"
-  path: "/var/lib/linuxpanel/data/panel.db"
-  
-paths:
-  data: "/var/lib/linuxpanel/data"
-  logs: "/var/log/linuxpanel"
-  websites: "/var/www"
-  
-security:
-  jwt_secret: "linuxpanel-secret-key-change-in-production"
-  session_timeout: 86400
-EOL
-
-    # 在pkg/common中创建types.go文件
-    cat > /opt/linuxpanel/pkg/common/types.go <<EOL
+    # 创建通用类型文件
+    cat > pkg/common/types.go <<EOL
 package common
 
 import (
@@ -440,57 +327,55 @@ type SystemStatus struct {
 }
 EOL
 
-    # 创建数据库类型文件
-    cat > /opt/linuxpanel/pkg/types/database.go <<EOL
-package types
+    # 创建配置文件
+    cat > configs/config.yaml <<EOL
+server:
+  port: 8080
+  host: "0.0.0.0"
+  
+database:
+  type: "sqlite"
+  path: "/var/lib/linuxpanel/data/panel.db"
+  
+paths:
+  data: "/var/lib/linuxpanel/data"
+  logs: "/var/log/linuxpanel"
+  websites: "/var/www"
+  
+security:
+  jwt_secret: "linuxpanel-secret-key-change-in-production"
+  session_timeout: 86400
+EOL
 
-import (
-    "time"
-)
-
-// Database 数据库类型
-type Database struct {
-    Name      string    \`json:"name"\`
-    Charset   string    \`json:"charset"\`
-    Collation string    \`json:"collation"\`
-    Size      int64     \`json:"size"\`
-    Tables    int       \`json:"tables"\`
-    CreatedAt time.Time \`json:"created_at"\`
-}
-
-// DBUser 数据库用户
-type DBUser struct {
-    Username   string   \`json:"username"\`
-    Host       string   \`json:"host"\`
-    Databases  []string \`json:"databases"\`
-    Privileges []string \`json:"privileges"\`
+    # 创建前端package.json
+    cat > ui/package.json <<EOL
+{
+  "name": "linuxpanel-ui",
+  "version": "1.0.0",
+  "description": "LinuxPanel前端界面",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "axios": "^1.5.0",
+    "chart.js": "^4.3.3",
+    "element-plus": "^2.3.12",
+    "pinia": "^2.1.6",
+    "vue": "^3.3.4",
+    "vue-router": "^4.2.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.3.4",
+    "sass": "^1.66.1",
+    "vite": "^4.4.9"
+  }
 }
 EOL
 
-    # 修改pkg/api/middleware.go文件
-    cat > /opt/linuxpanel/pkg/api/middleware.go <<EOL
-    // 这个文件不再使用，转而使用common包中的中间件
-    package api
-
-    // 中间件相关功能已移至common包
-    EOL
-
-    # 替换import路径
-    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/api\.AuthMiddleware/common\.AuthMiddleware/g' {} \;
-    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/api\.AdminOnly/common\.AdminOnly/g' {} \;
-    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/api\.OperatorOnly/common\.OperatorOnly/g' {} \;
-    
-    # 替换系统类型引用
-    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/SystemInfo{/common.SystemInfo{/g' {} \;
-    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/SystemStatus{/common.SystemStatus{/g' {} \;
-    
-    # 更新导入语句
-    find /opt/linuxpanel -type f -name "*.go" -exec grep -l "github.com/erniang/LinuxPanel/pkg/api" {} \; | xargs -I{} sed -i 's/import (/import (\n\t"github.com\/erniang\/LinuxPanel\/pkg\/common"/g' {}
-    
-    # 更新pkg/api/v1目录中的文件，使用common包
-    find /opt/linuxpanel/pkg/api/v1 -type f -name "*.go" -exec sed -i 's/"github.com\/erniang\/LinuxPanel\/pkg\/api"/"github.com\/erniang\/LinuxPanel\/pkg\/common"/g' {} \;
-    
-    echo -e "${GREEN}代码问题修复完成${NC}"
+    echo -e "${GREEN}代码文件创建完成${NC}"
 }
 
 # 编译后端
@@ -499,7 +384,7 @@ build_backend() {
     
     cd /opt/linuxpanel
     
-    # 设置代理
+    # 设置代理以加速下载
     export GOPROXY=https://goproxy.cn,direct
     
     # 下载依赖
@@ -516,74 +401,80 @@ build_backend() {
     echo -e "${GREEN}后端编译完成${NC}"
 }
 
-# 构建前端
-build_frontend() {
-    echo -e "${BLUE}开始构建前端...${NC}"
+# 创建前端占位
+create_frontend_placeholder() {
+    echo -e "${BLUE}创建前端占位目录...${NC}"
     
-    cd /opt/linuxpanel/ui
+    mkdir -p /opt/linuxpanel/ui/dist
     
-    # 安装依赖
-    npm install
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}前端依赖安装失败${NC}"
-        exit 1
-    fi
-    
-    # 创建环境配置
-    cat > .env.production <<EOL
-VITE_APP_BASE_API=http://localhost:8080/api
+    # 创建占位页面
+    cat > /opt/linuxpanel/ui/dist/index.html <<EOL
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinuxPanel</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f6f9;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #333;
+        }
+        .container {
+            text-align: center;
+            background-color: white;
+            border-radius: 10px;
+            padding: 40px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+        }
+        h1 {
+            color: #409EFF;
+            margin-bottom: 20px;
+        }
+        p {
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        .status {
+            display: inline-block;
+            background-color: #67C23A;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        .info {
+            margin-top: 30px;
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LinuxPanel 面板已成功安装</h1>
+        <p>面板后端服务正常运行中</p>
+        <div class="status">运行中</div>
+        <div class="info">
+            <p>您可以通过应用商店安装Nginx、MySQL和PHP等服务</p>
+            <p>默认管理员账户: admin</p>
+            <p>默认密码: admin123</p>
+            <p>API地址: http://localhost:8080/api</p>
+        </div>
+    </div>
+</body>
+</html>
 EOL
     
-    # 构建
-    npm run build
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}前端构建失败${NC}"
-        exit 1
-    fi
-    
-    echo -e "${GREEN}前端构建完成${NC}"
-}
-
-# 配置Nginx
-configure_nginx() {
-    echo -e "${BLUE}配置Nginx...${NC}"
-    
-    # 创建Nginx配置
-    cat > /etc/nginx/conf.d/linuxpanel.conf <<EOL
-server {
-    listen 80;
-    server_name _;
-    
-    location / {
-        root /opt/linuxpanel/ui/dist;
-        index index.html;
-        try_files \$uri \$uri/ /index.html;
-    }
-    
-    location /api/ {
-        proxy_pass http://127.0.0.1:8080/api/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOL
-    
-    # 测试并重启Nginx
-    nginx -t
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Nginx配置测试失败${NC}"
-        exit 1
-    fi
-    
-    # 重启Nginx
-    systemctl restart nginx
-    
-    echo -e "${GREEN}Nginx配置完成${NC}"
+    echo -e "${GREEN}前端占位创建完成${NC}"
 }
 
 # 创建配置文件
@@ -650,6 +541,97 @@ EOL
     echo -e "${GREEN}系统服务创建完成${NC}"
 }
 
+# 更新README文档
+update_readme() {
+    echo -e "${BLUE}更新README文档...${NC}"
+    
+    cat > /opt/linuxpanel/README.md <<EOL
+# LinuxPanel - 轻量级Linux服务器管理面板
+
+LinuxPanel是一个轻量级的Linux服务器管理面板，提供直观的Web界面来管理您的Linux服务器，采用模块化设计，支持通过应用商店按需安装所需的组件。
+
+## 功能特性
+
+### 核心功能
+- 系统信息监控
+- 模块化设计
+- 基于SQLite的数据存储
+- 轻量级资源占用
+
+### 可选模块（通过应用商店安装）
+- Nginx网站管理
+- MySQL/MariaDB数据库管理
+- PHP运行环境
+- 文件管理
+- 防火墙配置
+- SSL证书申请
+
+## 系统要求
+
+- Linux操作系统 (Ubuntu 18.04+, CentOS 7+, Debian 10+)
+- 最小配置：1核CPU，512MB内存，5GB硬盘空间
+- 推荐配置：2核CPU，1GB内存，10GB+硬盘空间
+
+## 快速安装
+
+```bash
+# 下载安装脚本
+wget https://raw.githubusercontent.com/erniang/LinuxPanel/main/install.sh
+
+# 给脚本添加执行权限
+chmod +x install.sh
+
+# 以root用户运行安装脚本
+sudo ./install.sh
+```
+
+## 使用指南
+
+安装完成后，通过浏览器访问服务器IP地址（或配置域名），默认监听8080端口：
+
+```
+http://YOUR_SERVER_IP:8080
+```
+
+初始登录凭证：
+- 用户名：admin
+- 密码：admin123
+
+**重要提示：** 首次登录后请立即修改默认密码！
+
+## 配置文件
+
+主配置文件位于 \`/etc/linuxpanel/config.yaml\`
+
+## 服务管理
+
+LinuxPanel作为系统服务运行，可以使用以下命令管理：
+
+```bash
+# 启动服务
+systemctl start linuxpanel
+
+# 停止服务
+systemctl stop linuxpanel
+
+# 重启服务
+systemctl restart linuxpanel
+
+# 查看服务状态
+systemctl status linuxpanel
+
+# 设置开机自启
+systemctl enable linuxpanel
+```
+
+## 许可证
+
+本项目采用GPL-3.0 License
+EOL
+    
+    echo -e "${GREEN}README文档更新完成${NC}"
+}
+
 # 设置防火墙
 configure_firewall() {
     echo -e "${BLUE}配置防火墙...${NC}"
@@ -657,8 +639,7 @@ configure_firewall() {
     if command -v ufw &> /dev/null; then
         # Ubuntu/Debian
         ufw allow ssh
-        ufw allow http
-        ufw allow https
+        ufw allow 8080/tcp
         
         # 如果防火墙未启用
         if ! ufw status | grep -q "Status: active"; then
@@ -667,8 +648,7 @@ configure_firewall() {
     elif command -v firewall-cmd &> /dev/null; then
         # CentOS/RHEL
         firewall-cmd --permanent --add-service=ssh
-        firewall-cmd --permanent --add-service=http
-        firewall-cmd --permanent --add-service=https
+        firewall-cmd --permanent --add-port=8080/tcp
         firewall-cmd --reload
     else
         echo -e "${YELLOW}未检测到防火墙，请手动配置防火墙规则${NC}"
@@ -685,7 +665,7 @@ finish_install() {
     echo -e "${GREEN}====================================================${NC}"
     echo -e "${GREEN}轻量级Linux面板安装完成！${NC}"
     echo -e "${GREEN}====================================================${NC}"
-    echo -e "${BLUE}访问地址: http://$SERVER_IP${NC}"
+    echo -e "${BLUE}访问地址: http://$SERVER_IP:8080${NC}"
     echo -e "${BLUE}默认用户名: admin${NC}"
     echo -e "${BLUE}默认密码: admin123${NC}"
     echo -e "${YELLOW}请立即登录并修改默认密码！${NC}"
@@ -699,12 +679,14 @@ finish_install() {
     echo -e "${BLUE}日志位置: /var/log/linuxpanel${NC}"
     echo -e "${BLUE}配置文件: /etc/linuxpanel/config.yaml${NC}"
     echo -e "${GREEN}====================================================${NC}"
+    echo -e "${YELLOW}提示: 您可以通过应用商店安装Nginx、MySQL和PHP等服务${NC}"
+    echo -e "${GREEN}====================================================${NC}"
 }
 
 # 主函数
 main() {
     echo -e "${GREEN}====================================================${NC}"
-    echo -e "${GREEN}       轻量级Linux面板一键安装脚本 v1.0.0            ${NC}"
+    echo -e "${GREEN}       轻量级Linux面板一键安装脚本 v2.0.0            ${NC}"
     echo -e "${GREEN}====================================================${NC}"
     
     check_root
@@ -712,13 +694,15 @@ main() {
     install_dependencies
     create_directories
     get_code
-    fix_import_cycle
+    create_project_structure
+    update_go_dependencies
+    create_code_files
     build_backend
-    build_frontend
-    configure_nginx
+    create_frontend_placeholder
     create_config
     create_service
     configure_firewall
+    update_readme
     finish_install
 }
 

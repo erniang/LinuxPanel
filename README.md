@@ -5,56 +5,53 @@
 </div>
 
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)
-![Go Version](https://img.shields.io/badge/go-%3E%3D1.18-blue.svg)
+![Go Version](https://img.shields.io/badge/go-%3E%3D1.21-blue.svg)
 ![Node Version](https://img.shields.io/badge/node-%3E%3D16-green.svg)
 
-LinuxPanel是一个轻量级的Linux服务器管理面板，提供直观的Web界面来管理您的Linux服务器，包括网站部署、文件管理、数据库管理和应用商店等功能。项目使用Go语言作为后端，Vue.js作为前端，设计轻量、高效且易于使用。
+LinuxPanel是一个轻量级的Linux服务器管理面板，提供直观的Web界面来管理您的Linux服务器。采用模块化设计，核心组件占用资源极少，可通过应用商店按需安装网站部署、文件管理、数据库管理等功能。项目使用Go语言作为后端，Vue.js作为前端，设计轻量、高效且易于使用。
 
 ## 功能特性
 
-### 系统监控
+### 核心系统（默认安装）
 - 实时监控CPU、内存、磁盘使用率
 - 显示系统基本信息（操作系统、内核版本等）
 - 运行时间和系统负载监控
+- 轻量级SQLite数据存储
+- 模块化应用商店
 
-### 网站管理
+### 可选模块（应用商店安装）
+#### 网站管理
 - 轻松创建和管理网站
+- Nginx服务器配置
 - 多种PHP版本支持
-- 自动配置Nginx服务器
-- SSL证书管理（Let's Encrypt自动申请、自定义证书上传）
-- 网站状态控制（启动/停止/重启）
+- SSL证书管理
 
-### 文件管理
+#### 文件管理
 - 直观的文件浏览器界面
 - 文件上传下载
 - 文件编辑器（支持代码高亮）
 - 文件权限管理
-- 文件搜索功能
 
-### 数据库管理
+#### 数据库管理
 - MySQL/MariaDB数据库创建和管理
 - 数据库用户管理
-- 权限控制
 - 数据库备份和恢复
-- 执行SQL查询
 
-### 应用商店
+#### 应用部署
 - 一键安装常用应用（WordPress、Discuz、NextCloud等）
 - 应用版本管理
 - 自定义应用源
-- 应用更新和卸载
 
-### 安全特性
-- 基于JWT的身份验证
-- 防暴力破解保护
-- HTTPS支持
-- 日志记录和审计
+#### 安全中心
+- 防火墙规则管理
+- SSH安全设置
+- 系统更新管理
 
 ## 系统要求
 
 - Linux操作系统 (Ubuntu 18.04+, CentOS 7+, Debian 10+)
-- 最小配置：1核CPU，1GB内存，10GB硬盘空间
-- 推荐配置：2核CPU，2GB内存，20GB+硬盘空间
+- 最小配置：1核CPU，512MB内存，5GB硬盘空间
+- 推荐配置：2核CPU，1GB内存，10GB+硬盘空间
 
 ## 快速安装
 
@@ -78,18 +75,18 @@ sudo ./install.sh
 ```bash
 # Debian/Ubuntu
 apt update
-apt install -y curl wget git nginx mysql-server
+apt install -y curl wget git build-essential sqlite3
 
 # CentOS/RHEL
 yum update
-yum install -y curl wget git nginx mysql-server
+yum install -y curl wget git gcc gcc-c++ make sqlite
 ```
 
-#### 2. 安装Go (1.18+)
+#### 2. 安装Go (1.21+)
 
 ```bash
-wget https://golang.org/dl/go1.19.linux-amd64.tar.gz
-tar -C /usr/local -xzf go1.19.linux-amd64.tar.gz
+wget https://golang.org/dl/go1.21.0.linux-amd64.tar.gz
+tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz
 echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/go.sh
 source /etc/profile.d/go.sh
 ```
@@ -117,15 +114,7 @@ go mod tidy
 go build -o linuxpanel
 ```
 
-#### 6. 构建前端
-
-```bash
-cd ui
-npm install
-npm run build
-```
-
-#### 7. 配置服务
+#### 6. 创建必要目录和配置
 
 ```bash
 # 创建工作目录
@@ -137,21 +126,22 @@ mkdir -p /var/lib/linuxpanel/data
 # 复制文件
 cp linuxpanel /opt/linuxpanel/
 cp -r ui/dist /opt/linuxpanel/ui/
+cp -r configs /etc/linuxpanel/
 ```
 
 完整的手动安装步骤请参考[详细安装文档](docs/installation.md)。
 
 ## 使用指南
 
-安装完成后，通过浏览器访问服务器IP地址，默认使用HTTP协议和80端口：
+安装完成后，通过浏览器访问服务器IP地址，默认端口为8080：
 
 ```
-http://YOUR_SERVER_IP
+http://YOUR_SERVER_IP:8080
 ```
 
 初始登录凭证：
 - 用户名：admin
-- 密码：admin
+- 密码：admin123
 
 **重要提示：** 首次登录后请立即修改默认密码！
 
@@ -165,12 +155,8 @@ server:
   host: "0.0.0.0"
   
 database:
-  type: "mysql"
-  host: "localhost"
-  port: 3306
-  user: "linuxpanel"
-  password: "linuxpanel"
-  name: "linuxpanel"
+  type: "sqlite"
+  path: "/var/lib/linuxpanel/data/panel.db"
   
 paths:
   data: "/var/lib/linuxpanel/data"
@@ -203,6 +189,23 @@ systemctl status linuxpanel
 systemctl enable linuxpanel
 ```
 
+## 常见问题
+
+### 1. 面板安装后无法访问
+- 检查服务是否正常运行：`systemctl status linuxpanel`
+- 确认8080端口是否开放：`netstat -tunlp | grep 8080`
+- 检查防火墙设置：`ufw status` 或 `firewall-cmd --list-all`
+
+### 2. 如何更改监听端口？
+编辑配置文件 `/etc/linuxpanel/config.yaml`，修改 `server.port` 值，然后重启服务。
+
+### 3. 默认密码无法登录
+如果忘记密码，可以通过以下命令重置管理员密码：
+```bash
+sqlite3 /var/lib/linuxpanel/data/panel.db "UPDATE users SET password='$2a$10$uIBEsK0BbGQ6Lr.2oHjy0uKBFbXzS9YBjaoBd1tYYb8JkjWVZzWQ6' WHERE username='admin';"
+```
+重置后密码为：admin123
+
 ## 开发指南
 
 如果您想参与开发，请查看[开发文档](docs/development.md)。
@@ -213,12 +216,13 @@ systemctl enable linuxpanel
 pkg/
 ├── api/          # API路由和处理器
 ├── auth/         # 身份验证
+├── common/       # 公共组件和类型
 ├── config/       # 配置处理
 ├── database/     # 数据库操作
 ├── logger/       # 日志系统
 ├── models/       # 数据模型
 ├── system/       # 系统信息和操作
-├── utils/        # 通用工具函数
+├── types/        # 类型定义
 └── web/          # 网站部署管理
 ```
 

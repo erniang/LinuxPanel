@@ -13,8 +13,8 @@ NC='\033[0m' # No Color
 
 # 检测是否为root用户
 check_root() {
-    if [ "$(id -u)" != "0" ]; then
-        echo -e "${RED}错误：请使用root用户运行此脚本${NC}"
+    if [ $(id -u) -ne 0 ]; then
+        echo -e "${RED}错误: 请使用root用户运行此脚本${NC}"
         exit 1
     fi
 }
@@ -25,100 +25,78 @@ check_os() {
         . /etc/os-release
         OS=$ID
         VERSION=$VERSION_ID
+        echo -e "检测到操作系统: ${YELLOW}$OS $VERSION${NC}"
     else
-        echo -e "${RED}无法检测到操作系统类型${NC}"
+        echo -e "${RED}无法确定操作系统类型${NC}"
         exit 1
     fi
-    
-    echo -e "${GREEN}检测到操作系统: $OS $VERSION${NC}"
 }
 
 # 安装依赖
 install_dependencies() {
     echo -e "${BLUE}开始安装依赖...${NC}"
     
-    case $OS in
-        "ubuntu"|"debian")
-            apt update -y
-            apt install -y curl wget git build-essential
-            
-            # 安装Go
-            if ! command -v go &> /dev/null; then
-                echo -e "${YELLOW}正在安装Go...${NC}"
-                wget https://golang.org/dl/go1.19.linux-amd64.tar.gz
-                tar -C /usr/local -xzf go1.19.linux-amd64.tar.gz
-                echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/go.sh
-                source /etc/profile.d/go.sh
-                rm -f go1.19.linux-amd64.tar.gz
-            fi
-            
-            # 安装Node.js
-            if ! command -v node &> /dev/null; then
-                echo -e "${YELLOW}正在安装Node.js...${NC}"
-                curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-                apt install -y nodejs
-            fi
-            
-            # 安装MySQL
-            if ! command -v mysql &> /dev/null; then
-                echo -e "${YELLOW}正在安装MySQL...${NC}"
-                apt install -y mysql-server
-                systemctl start mysql
-                systemctl enable mysql
-            fi
-            
-            # 安装Nginx
-            if ! command -v nginx &> /dev/null; then
-                echo -e "${YELLOW}正在安装Nginx...${NC}"
-                apt install -y nginx
-                systemctl start nginx
-                systemctl enable nginx
-            fi
-            ;;
-            
-        "centos"|"rhel"|"fedora"|"rocky"|"almalinux")
-            yum update -y
-            yum install -y curl wget git gcc gcc-c++ make
-            
-            # 安装Go
-            if ! command -v go &> /dev/null; then
-                echo -e "${YELLOW}正在安装Go...${NC}"
-                wget https://golang.org/dl/go1.19.linux-amd64.tar.gz
-                tar -C /usr/local -xzf go1.19.linux-amd64.tar.gz
-                echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/go.sh
-                source /etc/profile.d/go.sh
-                rm -f go1.19.linux-amd64.tar.gz
-            fi
-            
-            # 安装Node.js
-            if ! command -v node &> /dev/null; then
-                echo -e "${YELLOW}正在安装Node.js...${NC}"
-                curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
-                yum install -y nodejs
-            fi
-            
-            # 安装MySQL
-            if ! command -v mysql &> /dev/null; then
-                echo -e "${YELLOW}正在安装MySQL...${NC}"
-                yum install -y mysql-server
-                systemctl start mysqld
-                systemctl enable mysqld
-            fi
-            
-            # 安装Nginx
-            if ! command -v nginx &> /dev/null; then
-                echo -e "${YELLOW}正在安装Nginx...${NC}"
-                yum install -y nginx
-                systemctl start nginx
-                systemctl enable nginx
-            fi
-            ;;
-            
-        *)
-            echo -e "${RED}不支持的操作系统: $OS${NC}"
-            exit 1
-            ;;
-    esac
+    # 修复Debian 11安全源
+    if [ "$OS" = "debian" ] && [ "$VERSION_ID" = "11" ]; then
+        # 备份sources.list
+        cp /etc/apt/sources.list /etc/apt/sources.list.bak
+        
+        # 更新为最新的源地址
+        cat > /etc/apt/sources.list <<EOF
+deb http://deb.debian.org/debian bullseye main contrib non-free
+deb http://deb.debian.org/debian bullseye-updates main contrib non-free
+deb http://deb.debian.org/debian bullseye-backports main contrib non-free
+deb http://security.debian.org/debian-security bullseye-security main contrib non-free
+EOF
+    fi
+    
+    # 更新软件包列表
+    apt-get update -y
+    
+    # 安装基本依赖
+    apt-get install -y curl wget git build-essential
+    
+    # 安装Node.js
+    echo -e "${BLUE}正在安装Node.js...${NC}"
+    curl -fsSL https://deb.nodesource.com/setup_16.x | bash - || {
+        echo -e "${YELLOW}Node.js源添加失败，使用系统默认版本${NC}"
+    }
+    apt-get install -y nodejs
+    
+    # 安装MySQL或MariaDB (如果MySQL不可用，则使用MariaDB)
+    echo -e "${BLUE}正在安装数据库...${NC}"
+    if apt-cache show mysql-server &>/dev/null; then
+        apt-get install -y mysql-server
+        systemctl enable mysql.service
+        systemctl start mysql.service
+    else
+        echo -e "${YELLOW}MySQL不可用，安装MariaDB作为替代${NC}"
+        apt-get install -y mariadb-server
+        systemctl enable mariadb.service
+        systemctl start mariadb.service
+    fi
+    
+    # 安装Nginx
+    echo -e "${BLUE}正在安装Nginx...${NC}"
+    apt-get install -y nginx
+    systemctl enable nginx.service
+    systemctl start nginx.service
+    
+    # 安装或升级Go
+    echo -e "${BLUE}正在检查Go环境...${NC}"
+    GO_VERSION=$(go version 2>/dev/null | grep -oP 'go\K[0-9.]+' || echo "0")
+    if [[ "$(printf '%s\n' "1.15" "$GO_VERSION" | sort -V | head -n1)" != "1.15" ]]; then
+        echo -e "${YELLOW}Go版本 $GO_VERSION 不满足要求，正在安装Go 1.15...${NC}"
+        # 下载并安装Go 1.15
+        wget https://dl.google.com/go/go1.15.15.linux-amd64.tar.gz -O /tmp/go1.15.15.linux-amd64.tar.gz
+        rm -rf /usr/local/go
+        tar -C /usr/local -xzf /tmp/go1.15.15.linux-amd64.tar.gz
+        if ! grep -q "export PATH=\$PATH:/usr/local/go/bin" /root/.bashrc; then
+            echo 'export PATH=$PATH:/usr/local/go/bin' >> /root/.bashrc
+        fi
+        export PATH=$PATH:/usr/local/go/bin
+        rm -f /tmp/go1.15.15.linux-amd64.tar.gz
+    fi
     
     echo -e "${GREEN}依赖安装完成${NC}"
 }
@@ -127,12 +105,12 @@ install_dependencies() {
 create_directories() {
     echo -e "${BLUE}创建工作目录...${NC}"
     
-    # 创建主要目录
+    # 创建必要的目录
     mkdir -p /opt/linuxpanel
     mkdir -p /etc/linuxpanel
-    mkdir -p /var/log/linuxpanel
     mkdir -p /var/lib/linuxpanel/data
-    mkdir -p /var/lib/linuxpanel/configs
+    mkdir -p /var/log/linuxpanel
+    mkdir -p /var/www
     
     echo -e "${GREEN}工作目录创建完成${NC}"
 }
@@ -141,30 +119,197 @@ create_directories() {
 get_code() {
     echo -e "${BLUE}获取代码...${NC}"
     
+    # 进入工作目录
     cd /opt/linuxpanel
     
-    # 克隆代码仓库
-    git clone https://github.com/erniang/LinuxPanel.git .
+    # 清空目录以避免冲突
+    find . -maxdepth 1 -not -path . -not -path './.git*' -exec rm -rf {} \;
     
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}代码获取失败，尝试使用镜像源...${NC}"
-        # 备用下载方式
-        wget -O linuxpanel.tar.gz https://github.com/erniang/LinuxPanel/archive/refs/heads/main.tar.gz
-        tar -xzf linuxpanel.tar.gz
-        mv LinuxPanel-main/* .
-        rm -rf LinuxPanel-main linuxpanel.tar.gz
+    # 尝试克隆仓库
+    if git clone --depth=1 https://github.com/erniang/LinuxPanel.git . 2>/dev/null; then
+        echo -e "${GREEN}代码获取完成${NC}"
+    else
+        echo -e "${YELLOW}代码获取失败，尝试使用镜像源...${NC}"
+        # 尝试使用压缩包下载
+        wget https://github.com/erniang/LinuxPanel/archive/refs/heads/main.tar.gz -O /tmp/linuxpanel.tar.gz
+        
+        # 解压到临时目录
+        mkdir -p /tmp/linuxpanel
+        tar -xzf /tmp/linuxpanel.tar.gz -C /tmp/linuxpanel --strip-components=1
+        
+        # 复制文件到目标目录（而非移动，避免由于目录非空导致的错误）
+        cp -rf /tmp/linuxpanel/* /opt/linuxpanel/
+        
+        # 清理临时文件
+        rm -rf /tmp/linuxpanel /tmp/linuxpanel.tar.gz
+        
+        echo -e "${GREEN}代码获取完成${NC}"
     fi
-    
-    echo -e "${GREEN}代码获取完成${NC}"
 }
 
 # 解决循环导入问题
 fix_import_cycle() {
     echo -e "${BLUE}修复代码问题...${NC}"
     
+    # 降低Go版本要求
+    cd /opt/linuxpanel
+    sed -i 's/go 1.21/go 1.15/' go.mod
+    
+    # 修改依赖版本
+    sed -i 's/github.com\/gin-gonic\/gin v1.9.1/github.com\/gin-gonic\/gin v1.7.7/' go.mod
+    sed -i 's/github.com\/mattn\/go-sqlite3 v1.14.22/github.com\/mattn\/go-sqlite3 v1.14.8/' go.mod
+    sed -i 's/github.com\/shirou\/gopsutil\/v3 v3.24.1/github.com\/shirou\/gopsutil\/v3 v3.21.12/' go.mod
+    sed -i 's/golang.org\/x\/crypto v0.9.0/golang.org\/x\/crypto v0.0.0-20210711020723-a769d52b0f97/' go.mod
+    sed -i 's/gopkg.in\/yaml.v3 v3.0.1/gopkg.in\/yaml.v3 v3.0.0-20210107192922-496545a6307b/' go.mod
+    
     # 创建pkg/types目录并移动共享类型
     mkdir -p /opt/linuxpanel/pkg/types
     
+    # 创建common包并移动共享代码
+    mkdir -p /opt/linuxpanel/pkg/common
+    
+    # 在pkg/common中创建middleware.go文件
+    cat > /opt/linuxpanel/pkg/common/middleware.go <<EOL
+package common
+
+import (
+	"net/http"
+	"strings"
+	
+	"github.com/gin-gonic/gin"
+	"github.com/erniang/LinuxPanel/pkg/auth"
+)
+
+// AuthMiddleware 认证中间件，验证用户是否登录
+func AuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := c.GetHeader("Authorization")
+		
+		// 从Authorization头中获取token
+		if token == "" {
+			// 也可以从cookie中获取
+			tokenCookie, _ := c.Cookie("token")
+			token = tokenCookie
+		}
+		
+		// 移除Bearer前缀（如果有）
+		token = strings.TrimPrefix(token, "Bearer ")
+		
+		// 验证token
+		if token == "" {
+			c.JSON(http.StatusOK, gin.H{
+				"code": 401,
+				"msg":  "未授权，请先登录",
+			})
+			c.Abort()
+			return
+		}
+		
+		// 获取用户信息并存储到上下文
+		user := auth.GetUserFromToken(token)
+		c.Set("user", user)
+		
+		c.Next()
+	}
+}
+
+// AdminOnly 仅管理员可访问
+func AdminOnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, exists := c.Get("user")
+		if !exists {
+			c.JSON(http.StatusOK, gin.H{
+				"code": 401,
+				"msg":  "未授权，请先登录",
+			})
+			c.Abort()
+			return
+		}
+		
+		// 转换为用户类型
+		u, ok := user.(*auth.User)
+		if !ok || u.Role != auth.RoleAdmin {
+			c.JSON(http.StatusOK, gin.H{
+				"code": 403,
+				"msg":  "权限不足，需要管理员权限",
+			})
+			c.Abort()
+			return
+		}
+		
+		c.Next()
+	}
+}
+
+// OperatorOnly 仅运维或管理员可访问
+func OperatorOnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, exists := c.Get("user")
+		if !exists {
+			c.JSON(http.StatusOK, gin.H{
+				"code": 401,
+				"msg":  "未授权，请先登录",
+			})
+			c.Abort()
+			return
+		}
+		
+		// 转换为用户类型
+		u, ok := user.(*auth.User)
+		if !ok || (u.Role != auth.RoleAdmin && u.Role != auth.RoleOperator) {
+			c.JSON(http.StatusOK, gin.H{
+				"code": 403,
+				"msg":  "权限不足，需要运维或管理员权限",
+			})
+			c.Abort()
+			return
+		}
+		
+		c.Next()
+	}
+}
+EOL
+
+    # 在pkg/common中创建types.go文件
+    cat > /opt/linuxpanel/pkg/common/types.go <<EOL
+package common
+
+import (
+	"time"
+)
+
+// SystemInfo 系统信息
+type SystemInfo struct {
+	Hostname    string    \`json:"hostname"\`
+	OS          string    \`json:"os"\`
+	Platform    string    \`json:"platform"\`
+	KernelVer   string    \`json:"kernel_version"\`
+	Arch        string    \`json:"arch"\`
+	GoVersion   string    \`json:"go_version"\`
+	CPUCores    int       \`json:"cpu_cores"\`
+	Memory      uint64    \`json:"memory"\`
+	Uptime      uint64    \`json:"uptime"\`
+	BootTime    time.Time \`json:"boot_time"\`
+	ServerTime  time.Time \`json:"server_time"\`
+	PanelVer    string    \`json:"panel_version"\`
+	PanelUptime time.Time \`json:"panel_uptime"\`
+}
+
+// SystemStatus 系统状态
+type SystemStatus struct {
+	CPUUsage    float64 \`json:"cpu_usage"\`
+	MemoryUsage float64 \`json:"memory_usage"\`
+	MemoryFree  uint64  \`json:"memory_free"\`
+	MemoryTotal uint64  \`json:"memory_total"\`
+	DiskUsage   float64 \`json:"disk_usage"\`
+	DiskFree    uint64  \`json:"disk_free"\`
+	DiskTotal   uint64  \`json:"disk_total"\`
+	Load1       float64 \`json:"load1"\`
+	Load5       float64 \`json:"load5"\`
+	Load15      float64 \`json:"load15"\`
+}
+EOL
+
     # 创建数据库类型文件
     cat > /opt/linuxpanel/pkg/types/database.go <<EOL
 package types
@@ -192,17 +337,28 @@ type DBUser struct {
 }
 EOL
 
-    # 修改database.go导入
-    cd /opt/linuxpanel
-    sed -i 's/type Database struct {/\/\/ 导入共享类型\nimport (\n\t"github.com\/erniang\/LinuxPanel\/pkg\/types"\n)\n\n\/\/ 使用types.Database/g' pkg/api/v1/database.go
-    sed -i 's/type DBUser struct {/\/\/ 使用types.DBUser/g' pkg/api/v1/database.go
+    # 修改pkg/api/middleware.go文件
+    cat > /opt/linuxpanel/pkg/api/middleware.go <<EOL
+// 这个文件不再使用，转而使用common包中的中间件
+package api
+
+// 中间件相关功能已移至common包
+EOL
+
+    # 替换import路径
+    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/api\.AuthMiddleware/common\.AuthMiddleware/g' {} \;
+    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/api\.AdminOnly/common\.AdminOnly/g' {} \;
+    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/api\.OperatorOnly/common\.OperatorOnly/g' {} \;
     
-    # 替换其他引用
-    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/api\.v1\.Database/types.Database/g' {} \;
-    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/api\.v1\.DBUser/types.DBUser/g' {} \;
+    # 替换系统类型引用
+    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/SystemInfo{/common.SystemInfo{/g' {} \;
+    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/SystemStatus{/common.SystemStatus{/g' {} \;
     
-    # 替换导入路径
-    find /opt/linuxpanel -type f -name "*.go" -exec sed -i 's/github.com\/yourusername\/linuxpanel/github.com\/erniang\/LinuxPanel/g' {} \;
+    # 更新导入语句
+    find /opt/linuxpanel -type f -name "*.go" -exec grep -l "github.com/erniang/LinuxPanel/pkg/api" {} \; | xargs -I{} sed -i 's/import (/import (\n\t"github.com\/erniang\/LinuxPanel\/pkg\/common"/g' {}
+    
+    # 更新pkg/api/v1目录中的文件，使用common包
+    find /opt/linuxpanel/pkg/api/v1 -type f -name "*.go" -exec sed -i 's/"github.com\/erniang\/LinuxPanel\/pkg\/api"/"github.com\/erniang\/LinuxPanel\/pkg\/common"/g' {} \;
     
     echo -e "${GREEN}代码问题修复完成${NC}"
 }
@@ -212,6 +368,8 @@ build_backend() {
     echo -e "${BLUE}开始编译后端...${NC}"
     
     cd /opt/linuxpanel
+    
+    # 设置代理
     export GOPROXY=https://goproxy.cn,direct
     
     # 下载依赖
@@ -309,12 +467,8 @@ server:
   host: "0.0.0.0"
   
 database:
-  type: "mysql"
-  host: "localhost"
-  port: 3306
-  user: "root"
-  password: ""
-  name: "linuxpanel"
+  type: "sqlite"
+  path: "/var/lib/linuxpanel/data/panel.db"
   
 paths:
   data: "/var/lib/linuxpanel/data"
@@ -337,7 +491,7 @@ create_service() {
     cat > /etc/systemd/system/linuxpanel.service <<EOL
 [Unit]
 Description=Linux Panel Service
-After=network.target mysql.service
+After=network.target
 
 [Service]
 Type=simple
@@ -361,23 +515,6 @@ EOL
     systemctl start linuxpanel.service
     
     echo -e "${GREEN}系统服务创建完成${NC}"
-}
-
-# 初始化数据库
-init_database() {
-    echo -e "${BLUE}初始化数据库...${NC}"
-    
-    # 创建数据库和用户
-    mysql -u root -e "CREATE DATABASE IF NOT EXISTS linuxpanel DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
-    mysql -u root -e "CREATE USER IF NOT EXISTS 'linuxpanel'@'localhost' IDENTIFIED BY 'linuxpanel';"
-    mysql -u root -e "GRANT ALL PRIVILEGES ON linuxpanel.* TO 'linuxpanel'@'localhost';"
-    mysql -u root -e "FLUSH PRIVILEGES;"
-    
-    # 更新配置文件中的数据库密码
-    sed -i 's/password: ""/password: "linuxpanel"/g' /etc/linuxpanel/config.yaml
-    sed -i 's/user: "root"/user: "linuxpanel"/g' /etc/linuxpanel/config.yaml
-    
-    echo -e "${GREEN}数据库初始化完成${NC}"
 }
 
 # 设置防火墙
@@ -407,35 +544,6 @@ configure_firewall() {
     echo -e "${GREEN}防火墙配置完成${NC}"
 }
 
-# 创建初始管理员账户
-create_admin() {
-    echo -e "${BLUE}创建初始管理员账户...${NC}"
-    
-    # 创建admin用户相关目录和文件
-    mkdir -p /var/lib/linuxpanel/data/users
-    
-    # 生成随机盐值
-    SALT=$(openssl rand -hex 8)
-    
-    # 使用MD5+盐值生成密码（在实际应用中应使用更安全的哈希算法）
-    PASSWORD_HASH=$(echo -n "admin$SALT" | md5sum | cut -d ' ' -f 1)
-    
-    # 创建用户配置文件
-    cat > /var/lib/linuxpanel/data/users/admin.json <<EOL
-{
-    "username": "admin",
-    "password_hash": "$PASSWORD_HASH",
-    "salt": "$SALT",
-    "role": "admin",
-    "email": "admin@example.com",
-    "created_at": "$(date +%s)",
-    "last_login": "0"
-}
-EOL
-    
-    echo -e "${GREEN}管理员账户创建完成${NC}"
-}
-
 # 完成安装
 finish_install() {
     # 获取服务器IP
@@ -446,7 +554,7 @@ finish_install() {
     echo -e "${GREEN}====================================================${NC}"
     echo -e "${BLUE}访问地址: http://$SERVER_IP${NC}"
     echo -e "${BLUE}默认用户名: admin${NC}"
-    echo -e "${BLUE}默认密码: admin${NC}"
+    echo -e "${BLUE}默认密码: admin123${NC}"
     echo -e "${YELLOW}请立即登录并修改默认密码！${NC}"
     echo -e "${GREEN}====================================================${NC}"
     echo -e "${BLUE}服务管理命令:${NC}"
@@ -476,9 +584,7 @@ main() {
     build_frontend
     configure_nginx
     create_config
-    init_database
     create_service
-    create_admin
     configure_firewall
     finish_install
 }

@@ -1,71 +1,4 @@
-package main
-
-import (
-	"flag"
-	"fmt"
-	"os"
-	"os/signal"
-	"path/filepath"
-	"syscall"
-
-	"github.com/erniang/LinuxPanel/pkg/api"
-)
-
-var (
-	port     = flag.Int("port", 8080, "HTTP服务端口")
-	version  = "1.0.0"
-	buildTag = "dev"
-)
-
-func main() {
-	// 解析命令行参数
-	flag.Parse()
-
-	// 打印启动信息
-	fmt.Printf("LinuxPanel v%s (%s) 正在启动...\n", version, buildTag)
-	fmt.Printf("HTTP服务监听端口: %d\n", *port)
-
-	// 确保ui/dist目录存在
-	if _, err := os.Stat("ui/dist"); os.IsNotExist(err) {
-		// 尝试创建dist目录
-		err = os.MkdirAll("ui/dist", 0755)
-		if err != nil {
-			fmt.Printf("无法创建前端目录: %s\n", err.Error())
-		}
-
-		// 检查是否有index.html，如果没有，创建一个临时的
-		if _, err := os.Stat(filepath.Join("ui", "dist", "index.html")); os.IsNotExist(err) {
-			fmt.Println("WARNING: 前端文件不存在，将创建临时页面")
-			createTemporaryIndexFile()
-		}
-	}
-
-	// 初始化API路由
-	router := api.InitRouter()
-
-	// 启动HTTP服务
-	go func() {
-		addr := fmt.Sprintf(":%d", *port)
-		err := router.Run(addr)
-		if err != nil {
-			fmt.Printf("启动HTTP服务失败: %s\n", err.Error())
-			os.Exit(1)
-		}
-	}()
-
-	// 等待中断信号
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	// 优雅退出
-	fmt.Println("正在关闭服务...")
-	fmt.Println("服务已关闭")
-}
-
-// 创建临时的index.html文件
-func createTemporaryIndexFile() {
-	content := `<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -147,21 +80,4 @@ func createTemporaryIndexFile() {
         </div>
     </div>
 </body>
-</html>`
-
-	// 创建目录
-	err := os.MkdirAll(filepath.Join("ui", "dist"), 0755)
-	if err != nil {
-		fmt.Printf("创建目录失败: %s\n", err.Error())
-		return
-	}
-
-	// 写入临时index.html文件
-	err = os.WriteFile(filepath.Join("ui", "dist", "index.html"), []byte(content), 0644)
-	if err != nil {
-		fmt.Printf("创建临时index.html失败: %s\n", err.Error())
-		return
-	}
-
-	fmt.Println("已创建临时index.html文件")
-}
+</html>

@@ -56,12 +56,8 @@ EOF
     # 安装基本依赖
     apt-get install -y curl wget git build-essential sqlite3
     
-    # 安装Node.js
-    echo -e "${BLUE}正在安装Node.js...${NC}"
-    curl -fsSL https://deb.nodesource.com/setup_16.x | bash - || {
-        echo -e "${YELLOW}Node.js源添加失败，使用系统默认版本${NC}"
-    }
-    apt-get install -y nodejs
+    # 安装Node.js和npm
+    install_nodejs
     
     # 安装或升级Go
     echo -e "${BLUE}正在安装Go 1.21...${NC}"
@@ -80,6 +76,70 @@ EOF
     fi
     
     echo -e "${GREEN}依赖安装完成${NC}"
+}
+
+# 安装Node.js和npm
+install_nodejs() {
+    echo -e "${BLUE}正在安装Node.js和npm...${NC}"
+    
+    # 检查当前Node.js版本
+    NODE_VERSION=$(node -v 2>/dev/null || echo "v0.0.0")
+    NODE_MAJOR=$(echo $NODE_VERSION | cut -d. -f1 | tr -d 'v')
+    
+    # 如果版本低于16，安装Node.js 16
+    if [ "$NODE_MAJOR" -lt "16" ]; then
+        echo -e "${YELLOW}Node.js版本 $NODE_VERSION 不满足要求，正在安装Node.js 16...${NC}"
+        
+        # 根据不同的系统选择安装方式
+        if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
+            # 安装Node.js 16 (Debian/Ubuntu)
+            curl -fsSL https://deb.nodesource.com/setup_16.x | bash - || {
+                echo -e "${RED}Node.js源添加失败，尝试使用其他方式安装${NC}"
+                # 备选安装方式：使用NVM安装
+                curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
+                export NVM_DIR="$HOME/.nvm"
+                [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+                [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+                nvm install 16
+                nvm use 16
+            }
+            apt-get install -y nodejs
+        elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
+            # 安装Node.js 16 (CentOS/RHEL)
+            curl -fsSL https://rpm.nodesource.com/setup_16.x | bash - || {
+                echo -e "${RED}Node.js源添加失败，尝试使用其他方式安装${NC}"
+                # 备选安装方式：使用NVM安装
+                curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
+                export NVM_DIR="$HOME/.nvm"
+                [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+                [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+                nvm install 16
+                nvm use 16
+            }
+            yum install -y nodejs
+        else
+            echo -e "${RED}不支持的操作系统，请手动安装Node.js 16或更高版本${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${GREEN}检测到Node.js $NODE_VERSION，满足需求${NC}"
+    fi
+    
+    # 验证Node.js和npm已安装
+    NODE_VERSION=$(node -v 2>/dev/null || echo "未安装")
+    NPM_VERSION=$(npm -v 2>/dev/null || echo "未安装")
+    
+    echo -e "${GREEN}Node.js版本: $NODE_VERSION${NC}"
+    echo -e "${GREEN}npm版本: $NPM_VERSION${NC}"
+    
+    # 安装yarn (可选)
+    if ! command -v yarn &> /dev/null; then
+        echo -e "${BLUE}正在安装Yarn包管理器...${NC}"
+        npm install -g yarn
+        echo -e "${GREEN}Yarn已安装${NC}"
+    else
+        echo -e "${GREEN}Yarn已安装，版本: $(yarn -v)${NC}"
+    fi
 }
 
 # 创建工作目录
@@ -533,614 +593,174 @@ build_backend() {
     echo -e "${GREEN}后端编译完成${NC}"
 }
 
-# 构建前端界面
+# 构建前端
 build_frontend() {
-    echo -e "${BLUE}开始构建前端界面...${NC}"
+    echo -e "${BLUE}开始构建前端...${NC}"
     
-    # 创建前端基本目录
-    mkdir -p /opt/linuxpanel/ui/src
-    mkdir -p /opt/linuxpanel/ui/dist
-    mkdir -p /opt/linuxpanel/ui/dist/assets
+    cd /opt/linuxpanel/ui
     
-    # 创建前端基本文件结构
-    mkdir -p /opt/linuxpanel/ui/src/assets
-    mkdir -p /opt/linuxpanel/ui/src/components
-    mkdir -p /opt/linuxpanel/ui/src/views
-    mkdir -p /opt/linuxpanel/ui/src/router
-    mkdir -p /opt/linuxpanel/ui/src/styles
-    mkdir -p /opt/linuxpanel/ui/public
-    
-    # 创建一个完整的前端应用
-    # 1. 创建package.json
-    cat > /opt/linuxpanel/ui/package.json <<EOL
-{
-  "name": "linuxpanel-ui",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "serve": "vue-cli-service serve",
-    "build": "vue-cli-service build",
-    "lint": "vue-cli-service lint"
-  },
-  "dependencies": {
-    "axios": "^0.21.1",
-    "core-js": "^3.6.5",
-    "element-plus": "^1.0.2-beta.44",
-    "echarts": "^5.1.1",
-    "vue": "^3.0.0",
-    "vue-router": "^4.0.6",
-    "vuex": "^4.0.0"
-  },
-  "devDependencies": {
-    "@vue/cli-plugin-babel": "~4.5.0",
-    "@vue/cli-plugin-eslint": "~4.5.0",
-    "@vue/cli-plugin-router": "~4.5.0",
-    "@vue/cli-plugin-vuex": "~4.5.0",
-    "@vue/cli-service": "~4.5.0",
-    "@vue/compiler-sfc": "^3.0.0",
-    "babel-eslint": "^10.1.0",
-    "eslint": "^6.7.2",
-    "eslint-plugin-vue": "^7.0.0",
-    "sass": "^1.26.5",
-    "sass-loader": "^8.0.2"
-  }
-}
-EOL
-
-    # 创建静态资源目录和文件
-    mkdir -p /opt/linuxpanel/ui/dist/assets/css
-    mkdir -p /opt/linuxpanel/ui/dist/assets/js
-    mkdir -p /opt/linuxpanel/ui/dist/assets/img
-    
-    # 创建基本CSS文件
-    cat > /opt/linuxpanel/ui/dist/assets/css/main.css <<EOL
-body, html {
-  margin: 0;
-  padding: 0;
-  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  height: 100%;
-  background-color: #f5f7fa;
-}
-
-#app {
-  height: 100%;
-}
-
-.container {
-  padding: 20px;
-}
-
-.card {
-  background: #fff;
-  border-radius: 4px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-  padding: 20px;
-  margin-bottom: 20px;
-}
-
-.text-center {
-  text-align: center;
-}
-
-.color-primary {
-  color: #409EFF;
-}
-
-.header {
-  background-color: #fff;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
-  height: 60px;
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-}
-
-.sidebar {
-  background-color: #304156;
-  color: #bfcbd9;
-  width: 200px;
-  height: calc(100vh - 60px);
-}
-
-.main-content {
-  padding: 20px;
-  background-color: #f0f2f5;
-  min-height: calc(100vh - 60px);
-}
-
-.btn {
-  display: inline-block;
-  line-height: 1;
-  white-space: nowrap;
-  cursor: pointer;
-  background: #fff;
-  border: 1px solid #dcdfe6;
-  color: #606266;
-  text-align: center;
-  box-sizing: border-box;
-  outline: none;
-  margin: 0;
-  transition: .1s;
-  font-weight: 500;
-  padding: 12px 20px;
-  font-size: 14px;
-  border-radius: 4px;
-}
-
-.btn-primary {
-  color: #fff;
-  background-color: #409EFF;
-  border-color: #409EFF;
-}
-
-.btn-primary:hover {
-  background: #66b1ff;
-  border-color: #66b1ff;
-  color: #fff;
-}
-
-.form-group {
-  margin-bottom: 20px;
-}
-
-.form-label {
-  display: block;
-  margin-bottom: 5px;
-  font-size: 14px;
-  color: #606266;
-}
-
-.form-control {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  box-sizing: border-box;
-  font-size: 14px;
-  color: #606266;
-}
-
-.form-control:focus {
-  outline: none;
-  border-color: #409EFF;
-}
-EOL
-
-    # 创建基本JavaScript文件
-    cat > /opt/linuxpanel/ui/dist/assets/js/main.js <<EOL
-// 基本JavaScript功能
-document.addEventListener('DOMContentLoaded', function() {
-  // 登录按钮事件处理
-  const loginBtn = document.getElementById('login-btn');
-  if (loginBtn) {
-    loginBtn.addEventListener('click', function() {
-      const username = document.getElementById('username').value;
-      const password = document.getElementById('password').value;
-      
-      if (username === 'admin' && password === 'admin123') {
-        // 简单模拟登录成功
-        localStorage.setItem('token', 'mock-token-12345');
-        localStorage.setItem('user', JSON.stringify({name: 'admin', role: 'admin'}));
-        window.location.href = '/dashboard';
-      } else {
-        alert('用户名或密码错误');
-      }
-    });
-  }
-  
-  // 检查登录状态
-  const token = localStorage.getItem('token');
-  const isLoginPage = window.location.pathname === '/login';
-  
-  if (!token && !isLoginPage) {
-    window.location.href = '/login';
-  }
-  
-  // 登出按钮事件处理
-  const logoutBtn = document.getElementById('logout-btn');
-  if (logoutBtn) {
-    logoutBtn.addEventListener('click', function() {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
-    });
-  }
-});
-EOL
-
-    # 创建一个Favicon
-    cat > /opt/linuxpanel/ui/dist/favicon.ico <<EOL
-AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAQAABILAAASCwAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAUFBQMFBQUyBQUFZAUFBXoFBQV6BQUF
-ZAUFBTIFBQUDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQUFBUAFBQXRBQUFzwUFBZ8FBQWP
-BQUFzwUFBdEFBQVBAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAABQUFAgUFBZcFBQXbBQUFMAUFBQsA
-AAAAAAAAAAAAAAAFBQULBQUFMAUFBdsFBQWXBQUFAgAAAAAAAAAABQUFNwUFBd8FBQVjAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFBQVjBQUF3wUFBTcAAAAABQUFAgUFBaMFBQXWBQUFGAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFBQUYBQUFSQUFBaIFBQUCBQUFNwUFBd8FBQVnAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQUFBWcFBQXfBQUFNwUFBZcFBQXb
-BQUFEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABQUFQ4FBQXbBQUFlwUFBd8F
-BQVjAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMFBQVkBQUF3wUF
-BUEFBQXRBQUFTgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFBQVOBQUF
-0QUFBQEFBQUyBQUFzwUFBV4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAUGBV4FBQXP
-BQUFMgAAAAAFBQUDBQUFZAUFBbsFBQUuAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABQUFLgUFBbsF
-BQVkBQUFAwAAAAAAAAAAAAAAAQUFBWQFBQXfBQUFjwUFBS4FBQUFAAAAAAAAAAAFBQUFBQUFLgUF
-BY8FBQXfBQUFZAAAAAEAAAAAAAAAAAAAAAAFBQUDBQUFMgUFBWQFBQV6BQUFegUFBWQFBQUyBQUF
-AwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAA==
-EOL
-
-    # 创建主HTML文件
-    cat > /opt/linuxpanel/ui/dist/index.html <<EOL
+    # 检查package.json是否存在
+    if [ ! -f "package.json" ]; then
+        echo -e "${RED}前端源码不完整，未找到package.json${NC}"
+        
+        # 创建基本的前端占位页面
+        echo -e "${YELLOW}创建基本前端占位页面${NC}"
+        mkdir -p dist
+        cat > dist/index.html <<EOL
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width,initial-scale=1.0">
-    <link rel="stylesheet" href="/assets/css/main.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LinuxPanel - 轻量级Linux服务器管理面板</title>
     <style>
-        .login-container {
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f7fa;
+            margin: 0;
+            padding: 0;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background: linear-gradient(135deg, #8e9eab, #eef2f3);
+            color: #333;
         }
-        .login-box {
-            width: 350px;
-            background: #fff;
-            border-radius: 6px;
-            box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-            padding: 30px;
-        }
-        .logo {
+        .container {
             text-align: center;
-            margin-bottom: 30px;
+            background-color: white;
+            border-radius: 10px;
+            padding: 40px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
         }
-        .logo h1 {
+        h1 {
             color: #409EFF;
-            margin: 0;
-            font-size: 28px;
-        }
-        .logo p {
-            margin: 10px 0 0;
-            font-size: 14px;
-            color: #606266;
-        }
-        .login-tips {
-            text-align: center;
-            font-size: 12px;
-            color: #909399;
-            margin-top: 20px;
-        }
-        
-        /* 仪表盘样式 */
-        .dashboard {
-            display: none;
-        }
-        .app-layout {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-        .app-header {
-            background-color: #fff;
-            box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
-            height: 60px;
-            display: flex;
-            align-items: center;
-            padding: 0 20px;
-            justify-content: space-between;
-        }
-        .app-logo {
-            color: #409EFF;
-            font-size: 20px;
-            font-weight: bold;
-        }
-        .header-right {
-            display: flex;
-            align-items: center;
-        }
-        .content-container {
-            display: flex;
-            flex: 1;
-            overflow: hidden;
-        }
-        .sidebar {
-            width: 200px;
-            background-color: #304156;
-            color: #bfcbd9;
-            overflow-y: auto;
-        }
-        .menu {
-            padding: 0;
-            margin: 0;
-            list-style: none;
-        }
-        .menu-item {
-            height: 50px;
-            line-height: 50px;
-            padding: 0 20px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-        .menu-item:hover, .menu-item.active {
-            background-color: #263445;
-            color: #409EFF;
-        }
-        .main-content {
-            flex: 1;
-            padding: 20px;
-            background-color: #f0f2f5;
-            overflow-y: auto;
-        }
-        .welcome-card {
-            background-color: #fff;
-            border-radius: 4px;
-            box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-            padding: 20px;
-            text-align: center;
             margin-bottom: 20px;
         }
-        .welcome-card h2 {
-            color: #409EFF;
-            margin-top: 0;
-        }
-        .stats-container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
+        p {
+            line-height: 1.6;
             margin-bottom: 20px;
         }
-        .stat-card {
-            background-color: #fff;
-            border-radius: 4px;
-            box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-            padding: 20px;
-            flex: 1;
-            min-width: 200px;
-            text-align: center;
-        }
-        .stat-title {
-            font-size: 14px;
-            color: #606266;
-            margin-bottom: 10px;
-        }
-        .stat-value {
-            font-size: 24px;
-            font-weight: bold;
-            color: #303133;
-            margin-bottom: 10px;
-        }
-        .progress-bar {
-            height: 6px;
-            background-color: #e6e6e6;
-            border-radius: 3px;
-            overflow: hidden;
-        }
-        .progress-inner {
-            height: 100%;
+        .status {
+            display: inline-block;
             background-color: #67C23A;
-            border-radius: 3px;
-        }
-        .info-container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-        }
-        .info-card {
-            background-color: #fff;
-            border-radius: 4px;
-            box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-            flex: 1;
-            min-width: 300px;
-        }
-        .info-header {
-            padding: 15px 20px;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
             font-weight: bold;
-            border-bottom: 1px solid #EBEEF5;
         }
-        .info-content {
-            padding: 0;
-        }
-        .info-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 12px 20px;
-            border-bottom: 1px solid #EBEEF5;
-        }
-        .info-item:last-child {
-            border-bottom: none;
-        }
-        .info-label {
-            color: #606266;
-        }
-        .info-value {
-            color: #303133;
-            font-weight: 500;
+        .info {
+            margin-top: 30px;
+            font-size: 0.9em;
+            color: #666;
         }
     </style>
 </head>
 <body>
-    <div id="app">
-        <!-- 登录页面 -->
-        <div class="login-container" id="login-page">
-            <div class="login-box">
-                <div class="logo">
-                    <h1>LinuxPanel</h1>
-                    <p>轻量级Linux服务器管理面板</p>
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="username">用户名</label>
-                    <input type="text" id="username" class="form-control" placeholder="请输入用户名">
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="password">密码</label>
-                    <input type="password" id="password" class="form-control" placeholder="请输入密码">
-                </div>
-                <button id="login-btn" class="btn btn-primary" style="width:100%">登录</button>
-                <div class="login-tips">
-                    默认用户名: admin<br>默认密码: admin123
-                </div>
-            </div>
-        </div>
-        
-        <!-- 仪表盘页面 -->
-        <div class="dashboard" id="dashboard-page">
-            <div class="app-layout">
-                <header class="app-header">
-                    <div class="app-logo">LinuxPanel</div>
-                    <div class="header-right">
-                        <span id="username-display">admin</span>
-                        <button id="logout-btn" class="btn" style="margin-left:15px">退出登录</button>
-                    </div>
-                </header>
-                <div class="content-container">
-                    <aside class="sidebar">
-                        <ul class="menu">
-                            <li class="menu-item active">仪表盘</li>
-                            <li class="menu-item">网站管理</li>
-                            <li class="menu-item">数据库</li>
-                            <li class="menu-item">文件管理</li>
-                            <li class="menu-item">应用商店</li>
-                            <li class="menu-item">系统设置</li>
-                        </ul>
-                    </aside>
-                    <main class="main-content">
-                        <div class="welcome-card">
-                            <h2>欢迎使用LinuxPanel控制面板</h2>
-                            <p>轻量级的Linux服务器管理面板</p>
-                        </div>
-                        
-                        <div class="stats-container">
-                            <div class="stat-card">
-                                <div class="stat-title">CPU使用率</div>
-                                <div class="stat-value">15%</div>
-                                <div class="progress-bar">
-                                    <div class="progress-inner" style="width:15%"></div>
-                                </div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-title">内存使用率</div>
-                                <div class="stat-value">45%</div>
-                                <div class="progress-bar">
-                                    <div class="progress-inner" style="width:45%;background-color:#E6A23C"></div>
-                                </div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-title">磁盘使用率</div>
-                                <div class="stat-value">35%</div>
-                                <div class="progress-bar">
-                                    <div class="progress-inner" style="width:35%"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="info-container">
-                            <div class="info-card">
-                                <div class="info-header">系统信息</div>
-                                <div class="info-content">
-                                    <div class="info-item">
-                                        <span class="info-label">主机名</span>
-                                        <span class="info-value">server001</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">操作系统</span>
-                                        <span class="info-value">Debian 11</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">内核版本</span>
-                                        <span class="info-value">5.10.0-15-amd64</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">CPU核心数</span>
-                                        <span class="info-value">4</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">总内存</span>
-                                        <span class="info-value">8 GB</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">运行时间</span>
-                                        <span class="info-value">5天 6小时</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="info-card">
-                                <div class="info-header">面板信息</div>
-                                <div class="info-content">
-                                    <div class="info-item">
-                                        <span class="info-label">面板版本</span>
-                                        <span class="info-value">1.0.0</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">Go版本</span>
-                                        <span class="info-value">1.21.0</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">已安装模块</span>
-                                        <span class="info-value">核心模块</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">面板运行时间</span>
-                                        <span class="info-value">1天 0小时</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">数据库类型</span>
-                                        <span class="info-value">SQLite</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">面板端口</span>
-                                        <span class="info-value">8080</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </main>
-                </div>
-            </div>
+    <div class="container">
+        <h1>LinuxPanel 面板已安装</h1>
+        <p>后端服务运行中，前端尚未完成构建</p>
+        <div class="status">运行中</div>
+        <div class="info">
+            <p>请手动构建前端或使用完整版本的代码。</p>
+            <p>默认管理员账户: admin</p>
+            <p>默认密码: admin123</p>
         </div>
     </div>
-    
-    <script src="/assets/js/main.js"></script>
-    <script>
-        // 简单路由处理
-        document.addEventListener('DOMContentLoaded', function() {
-            const loginPage = document.getElementById('login-page');
-            const dashboardPage = document.getElementById('dashboard-page');
-            const token = localStorage.getItem('token');
-            
-            // 根据URL路径和登录状态显示不同页面
-            const path = window.location.pathname;
-            
-            if (token) {
-                loginPage.style.display = 'none';
-                dashboardPage.style.display = 'block';
-                
-                // 显示用户名
-                const user = JSON.parse(localStorage.getItem('user') || '{"name":"admin"}');
-                const usernameDisplay = document.getElementById('username-display');
-                if (usernameDisplay) {
-                    usernameDisplay.textContent = user.name;
-                }
-            } else {
-                loginPage.style.display = 'flex';
-                dashboardPage.style.display = 'none';
-            }
-        });
-    </script>
 </body>
 </html>
 EOL
-
-    echo -e "${GREEN}前端界面搭建完成${NC}"
-    echo -e "${YELLOW}注意: 这是一个基本的前端框架，后续可以通过应用商店完善功能${NC}"
+        echo -e "${YELLOW}占位页面已创建，建议后续获取完整源码重新构建${NC}"
+        return
+    fi
+    
+    # 安装依赖
+    echo -e "${BLUE}安装前端依赖...${NC}"
+    npm install || yarn install
+    
+    # 检查是否有build脚本
+    if grep -q '"build"' package.json; then
+        echo -e "${BLUE}开始构建前端代码...${NC}"
+        npm run build || yarn build
+        
+        # 检查构建是否成功
+        if [ -d "dist" ]; then
+            echo -e "${GREEN}前端构建成功${NC}"
+        else
+            echo -e "${RED}前端构建失败，使用基本占位页面${NC}"
+            mkdir -p dist
+            cat > dist/index.html <<EOL
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinuxPanel - 轻量级Linux服务器管理面板</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f7fa;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #333;
+        }
+        .container {
+            text-align: center;
+            background-color: white;
+            border-radius: 10px;
+            padding: 40px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+        }
+        h1 {
+            color: #409EFF;
+            margin-bottom: 20px;
+        }
+        p {
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        .status {
+            display: inline-block;
+            background-color: #F56C6C;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        .info {
+            margin-top: 30px;
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LinuxPanel 安装异常</h1>
+        <p>前端构建失败，但后端服务已正常运行</p>
+        <div class="status">构建错误</div>
+        <div class="info">
+            <p>请检查前端构建日志，或手动构建前端：</p>
+            <pre>cd /opt/linuxpanel/ui && npm install && npm run build</pre>
+            <p>默认管理员账户: admin</p>
+            <p>默认密码: admin123</p>
+        </div>
+    </div>
+</body>
+</html>
+EOL
+        fi
+    else
+        echo -e "${YELLOW}未找到build脚本，使用现有文件${NC}"
+    fi
+    
+    # 返回主目录
+    cd /opt/linuxpanel
 }
 
 # 创建配置文件
@@ -1351,25 +971,93 @@ finish_install() {
 
 # 主函数
 main() {
-    echo -e "${GREEN}====================================================${NC}"
-    echo -e "${GREEN}       轻量级Linux面板一键安装脚本 v2.0.0            ${NC}"
-    echo -e "${GREEN}====================================================${NC}"
+    echo -e "${BLUE}=== LinuxPanel 轻量级服务器面板安装程序 ===${NC}"
     
-    check_root
+    # 权限检查
+    if [[ $EUID -ne 0 ]]; then
+        echo -e "${RED}请使用root用户运行安装脚本${NC}"
+        exit 1
+    fi
+    
+    # 检查操作系统
     check_os
+    
+    # 显示安装信息
+    echo -e "${GREEN}将安装LinuxPanel轻量级服务器面板 v1.0.0${NC}"
+    echo -e "${YELLOW}操作系统: $OS $VERSION_ID${NC}"
+    echo -e "${YELLOW}数据库: SQLite${NC}"
+    
+    # 安装确认
+    read -p "确认安装? (y/n): " confirm
+    if [[ ! $confirm =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}安装已取消${NC}"
+        exit 1
+    fi
+    
+    # 安装依赖
     install_dependencies
+    
+    # 创建工作目录
     create_directories
+    
+    # 获取源代码
     get_code
-    create_project_structure
-    update_go_dependencies
-    create_code_files
-    build_backend
+    
+    # 构建前端
     build_frontend
+    
+    # 编译后端
+    build_backend
+    
+    # 创建数据库
     create_config
+    
+    # 创建服务
     create_service
-    configure_firewall
+    
+    # 更新README
     update_readme
-    finish_install
+    
+    # 启动服务
+    start_service
+    
+    # 安装完成
+    echo -e "${GREEN}=== LinuxPanel 安装完成 ===${NC}"
+    echo -e "${GREEN}您可以通过 http://YOUR_SERVER_IP:8080 访问面板${NC}"
+    echo -e "${GREEN}用户名: admin${NC}"
+    echo -e "${GREEN}密码: admin123${NC}"
+    
+    # 检查前端构建状态
+    if [ -f "/opt/linuxpanel/ui/dist/index.html" ]; then
+        if grep -q "面板已安装" "/opt/linuxpanel/ui/dist/index.html" || grep -q "安装异常" "/opt/linuxpanel/ui/dist/index.html"; then
+            echo -e "${YELLOW}警告: 前端未能完全构建，使用的是临时页面${NC}"
+            echo -e "${YELLOW}您可以手动构建前端:${NC}"
+            echo -e "${YELLOW}cd /opt/linuxpanel/ui && npm install && npm run build${NC}"
+        else
+            echo -e "${GREEN}前端界面已构建完成${NC}"
+        fi
+    else
+        echo -e "${YELLOW}警告: 未检测到前端文件，请确保前端代码完整${NC}"
+    fi
+}
+
+# 启动服务
+start_service() {
+    echo -e "${BLUE}启动LinuxPanel服务...${NC}"
+    
+    # 启动服务
+    systemctl daemon-reload
+    systemctl enable linuxpanel
+    systemctl start linuxpanel
+    
+    # 检查服务状态
+    sleep 2
+    if systemctl is-active --quiet linuxpanel; then
+        echo -e "${GREEN}LinuxPanel服务已启动${NC}"
+    else
+        echo -e "${RED}LinuxPanel服务启动失败${NC}"
+        echo -e "${YELLOW}请查看日志: journalctl -u linuxpanel${NC}"
+    fi
 }
 
 # 执行主函数

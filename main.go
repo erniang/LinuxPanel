@@ -1,71 +1,94 @@
 package main
 
 import (
-	"flag"
 	"fmt"
+	"log"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
+	"strconv"
 
 	"github.com/erniang/LinuxPanel/pkg/api"
+	"github.com/erniang/LinuxPanel/pkg/core"
 )
 
 var (
-	port     = flag.Int("port", 8080, "HTTP服务端口")
-	version  = "1.0.0"
-	buildTag = "dev"
+	Version = "1.0.0"
 )
 
 func main() {
-	// 解析命令行参数
-	flag.Parse()
+	fmt.Printf("LinuxPanel 轻量级管理面板 v%s\n", Version)
 
-	// 打印启动信息
-	fmt.Printf("LinuxPanel v%s (%s) 正在启动...\n", version, buildTag)
-	fmt.Printf("HTTP服务监听端口: %d\n", *port)
+	// 检查系统环境
+	fmt.Println("检查系统环境...")
 
-	// 确保ui/dist目录存在
-	if _, err := os.Stat("ui/dist"); os.IsNotExist(err) {
-		// 尝试创建dist目录
-		err = os.MkdirAll("ui/dist", 0755)
-		if err != nil {
-			fmt.Printf("无法创建前端目录: %s\n", err.Error())
-		}
+	// 初始化配置
+	config := core.NewConfig()
+	config.Version = Version
+	config.Port = getPort()
 
-		// 检查是否有index.html，如果没有，创建一个临时的
-		if _, err := os.Stat(filepath.Join("ui", "dist", "index.html")); os.IsNotExist(err) {
-			fmt.Println("WARNING: 前端文件不存在，将创建临时页面")
-			createTemporaryIndexFile()
-		}
+	// 检查前端文件
+	checkFrontendFiles()
+
+	// 初始化数据库
+	fmt.Println("初始化数据库...")
+	err := core.InitDB(config)
+	if err != nil {
+		log.Fatalf("数据库初始化失败: %v", err)
 	}
 
 	// 初始化API路由
-	router := api.InitRouter()
+	fmt.Printf("启动Web服务 [0.0.0.0:%d]...\n", config.Port)
+	router := api.InitRouter(config)
 
-	// 启动HTTP服务
-	go func() {
-		addr := fmt.Sprintf(":%d", *port)
-		err := router.Run(addr)
-		if err != nil {
-			fmt.Printf("启动HTTP服务失败: %s\n", err.Error())
-			os.Exit(1)
-		}
-	}()
-
-	// 等待中断信号
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	// 优雅退出
-	fmt.Println("正在关闭服务...")
-	fmt.Println("服务已关闭")
+	// 启动Web服务
+	err = router.Run(fmt.Sprintf(":%d", config.Port))
+	if err != nil {
+		log.Fatalf("启动Web服务失败: %v", err)
+	}
 }
 
-// 创建临时的index.html文件
-func createTemporaryIndexFile() {
-	content := `<!DOCTYPE html>
+// 获取端口号
+func getPort() int {
+	portStr := os.Getenv("PANEL_PORT")
+	if portStr != "" {
+		port, err := strconv.Atoi(portStr)
+		if err == nil && port > 0 && port < 65536 {
+			return port
+		}
+	}
+	return 8080 // 默认端口
+}
+
+// 检查前端文件
+func checkFrontendFiles() {
+	distDir := "./ui/dist"
+	indexPath := filepath.Join(distDir, "index.html")
+
+	// 检查dist目录是否存在
+	if _, err := os.Stat(distDir); os.IsNotExist(err) {
+		fmt.Println("警告: 前端文件目录不存在，创建临时页面")
+		createTempIndexFile()
+		return
+	}
+
+	// 检查index.html是否存在
+	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+		fmt.Println("警告: 前端入口文件不存在，创建临时页面")
+		createTempIndexFile()
+		return
+	}
+
+	fmt.Println("前端文件检查通过")
+}
+
+// 创建临时index.html文件
+func createTempIndexFile() {
+	// 确保目录存在
+	os.MkdirAll("./ui/dist", 0755)
+
+	// 创建临时HTML文件
+	html := `
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -74,7 +97,7 @@ func createTemporaryIndexFile() {
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #f4f6f9;
+            background-color: #f5f7fa;
             margin: 0;
             padding: 0;
             display: flex;
@@ -101,7 +124,7 @@ func createTemporaryIndexFile() {
         }
         .status {
             display: inline-block;
-            background-color: #67C23A;
+            background-color: #E6A23C;
             color: white;
             padding: 5px 15px;
             border-radius: 20px;
@@ -112,56 +135,28 @@ func createTemporaryIndexFile() {
             font-size: 0.9em;
             color: #666;
         }
-        .button {
-            background-color: #409EFF;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-top: 20px;
-        }
-        .button:hover {
-            background-color: #337ECC;
-        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>LinuxPanel 面板已成功安装</h1>
-        <p>面板后端服务正常运行中，但前端文件尚未构建</p>
-        <div class="status">运行中</div>
+        <h1>LinuxPanel 服务已启动</h1>
+        <p>后端服务运行中，但前端文件未构建</p>
+        <div class="status">临时页面</div>
         <div class="info">
-            <p>请执行以下步骤完成前端构建:</p>
-            <ol style="text-align: left;">
-                <li>进入项目目录: <code>cd /opt/linuxpanel</code></li>
-                <li>进入前端目录: <code>cd ui</code></li>
-                <li>安装依赖: <code>npm install</code></li>
-                <li>构建前端: <code>npm run build</code></li>
-                <li>重启服务: <code>systemctl restart linuxpanel</code></li>
-            </ol>
+            <p>请构建前端文件或安装完整版本：</p>
+            <pre>cd /opt/linuxpanel/ui && npm install && npm run build</pre>
             <p>默认管理员账户: admin</p>
             <p>默认密码: admin123</p>
-            <p>API地址: http://localhost:8080/api</p>
         </div>
     </div>
 </body>
-</html>`
+</html>
+`
 
-	// 创建目录
-	err := os.MkdirAll(filepath.Join("ui", "dist"), 0755)
+	err := os.WriteFile("./ui/dist/index.html", []byte(html), 0644)
 	if err != nil {
-		fmt.Printf("创建目录失败: %s\n", err.Error())
-		return
+		fmt.Printf("创建临时页面失败: %v\n", err)
+	} else {
+		fmt.Println("临时页面已创建")
 	}
-
-	// 写入临时index.html文件
-	err = os.WriteFile(filepath.Join("ui", "dist", "index.html"), []byte(content), 0644)
-	if err != nil {
-		fmt.Printf("创建临时index.html失败: %s\n", err.Error())
-		return
-	}
-
-	fmt.Println("已创建临时index.html文件")
 }

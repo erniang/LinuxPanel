@@ -4,7 +4,7 @@
     <div class="app-list" v-if="!loading">
       <div class="app-card" v-for="app in apps" :key="app.id">
         <div class="app-icon">
-          <i class="el-icon-box"></i>
+          <el-icon><Box /></el-icon>
         </div>
         <div class="app-info">
           <h3>{{ app.name }}</h3>
@@ -29,8 +29,14 @@
 </template>
 
 <script>
+import { Box } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+
 export default {
   name: 'AppStore',
+  components: {
+    Box
+  },
   data() {
     return {
       apps: [
@@ -51,17 +57,17 @@ export default {
       setTimeout(() => {
         app.installed = true
         this.installing = null
-        this.$message.success(`${app.name} 安装成功`)
+        ElMessage.success(`${app.name} 安装成功`)
       }, 1500)
     },
     uninstallApp(app) {
-      this.$confirm(`确定要卸载 ${app.name} 吗?`, '确认操作', {
+      ElMessageBox.confirm(`确定要卸载 ${app.name} 吗?`, '确认操作', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
       }).then(() => {
         app.installed = false
-        this.$message.success(`${app.name} 已卸载`)
+        ElMessage.success(`${app.name} 已卸载`)
       }).catch(() => {})
     }
   }

@@ -401,80 +401,843 @@ build_backend() {
     echo -e "${GREEN}后端编译完成${NC}"
 }
 
-# 创建前端占位
-create_frontend_placeholder() {
-    echo -e "${BLUE}创建前端占位目录...${NC}"
+# 构建前端界面
+build_frontend() {
+    echo -e "${BLUE}开始构建前端界面...${NC}"
     
+    # 创建前端基本目录
+    mkdir -p /opt/linuxpanel/ui/src
+    
+    # 创建前端基本文件结构
+    mkdir -p /opt/linuxpanel/ui/src/assets
+    mkdir -p /opt/linuxpanel/ui/src/components
+    mkdir -p /opt/linuxpanel/ui/src/views
+    mkdir -p /opt/linuxpanel/ui/src/router
+    mkdir -p /opt/linuxpanel/ui/src/styles
+    mkdir -p /opt/linuxpanel/ui/public
+    
+    # 创建一个完整的前端应用
+    # 1. 创建package.json
+    cat > /opt/linuxpanel/ui/package.json <<EOL
+{
+  "name": "linuxpanel-ui",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "serve": "vue-cli-service serve",
+    "build": "vue-cli-service build",
+    "lint": "vue-cli-service lint"
+  },
+  "dependencies": {
+    "axios": "^0.21.1",
+    "core-js": "^3.6.5",
+    "element-plus": "^1.0.2-beta.44",
+    "echarts": "^5.1.1",
+    "vue": "^3.0.0",
+    "vue-router": "^4.0.6",
+    "vuex": "^4.0.0"
+  },
+  "devDependencies": {
+    "@vue/cli-plugin-babel": "~4.5.0",
+    "@vue/cli-plugin-eslint": "~4.5.0",
+    "@vue/cli-plugin-router": "~4.5.0",
+    "@vue/cli-plugin-vuex": "~4.5.0",
+    "@vue/cli-service": "~4.5.0",
+    "@vue/compiler-sfc": "^3.0.0",
+    "babel-eslint": "^10.1.0",
+    "eslint": "^6.7.2",
+    "eslint-plugin-vue": "^7.0.0",
+    "sass": "^1.26.5",
+    "sass-loader": "^8.0.2"
+  }
+}
+EOL
+
+    # 2. 创建主HTML文件
+    cat > /opt/linuxpanel/ui/public/index.html <<EOL
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <link rel="icon" href="<%= BASE_URL %>favicon.ico">
+    <title>LinuxPanel - 轻量级Linux服务器管理面板</title>
+</head>
+<body>
+    <noscript>
+        <strong>很抱歉，LinuxPanel需要启用JavaScript才能正常工作。请启用它继续。</strong>
+    </noscript>
+    <div id="app"></div>
+    <!-- built files will be auto injected -->
+</body>
+</html>
+EOL
+
+    # 3. 创建主入口文件
+    cat > /opt/linuxpanel/ui/src/main.js <<EOL
+import { createApp } from 'vue'
+import ElementPlus from 'element-plus'
+import 'element-plus/lib/theme-chalk/index.css'
+import App from './App.vue'
+import router from './router'
+import store from './store'
+import './styles/global.css'
+
+createApp(App)
+    .use(ElementPlus)
+    .use(store)
+    .use(router)
+    .mount('#app')
+EOL
+
+    # 4. 创建根组件
+    cat > /opt/linuxpanel/ui/src/App.vue <<EOL
+<template>
+  <router-view />
+</template>
+
+<style>
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+</style>
+EOL
+
+    # 5. 创建路由配置
+    cat > /opt/linuxpanel/ui/src/router/index.js <<EOL
+import { createRouter, createWebHistory } from 'vue-router'
+import Login from '../views/Login.vue'
+import Layout from '../views/Layout.vue'
+import Dashboard from '../views/Dashboard.vue'
+
+const routes = [
+  {
+    path: '/login',
+    name: 'Login',
+    component: Login
+  },
+  {
+    path: '/',
+    component: Layout,
+    redirect: '/dashboard',
+    children: [
+      {
+        path: 'dashboard',
+        name: 'Dashboard',
+        component: Dashboard
+      }
+    ]
+  }
+]
+
+const router = createRouter({
+  history: createWebHistory(process.env.BASE_URL),
+  routes
+})
+
+// 简单的路由守卫
+router.beforeEach((to, from, next) => {
+  const token = localStorage.getItem('token')
+  if (to.path !== '/login' && !token) {
+    next('/login')
+  } else {
+    next()
+  }
+})
+
+export default router
+EOL
+
+    # 6. 创建状态管理
+    mkdir -p /opt/linuxpanel/ui/src/store
+    cat > /opt/linuxpanel/ui/src/store/index.js <<EOL
+import { createStore } from 'vuex'
+
+export default createStore({
+  state: {
+    user: JSON.parse(localStorage.getItem('user')) || null,
+    token: localStorage.getItem('token') || '',
+    systemInfo: {}
+  },
+  mutations: {
+    SET_USER(state, user) {
+      state.user = user
+      localStorage.setItem('user', JSON.stringify(user))
+    },
+    SET_TOKEN(state, token) {
+      state.token = token
+      localStorage.setItem('token', token)
+    },
+    SET_SYSTEM_INFO(state, info) {
+      state.systemInfo = info
+    },
+    LOGOUT(state) {
+      state.user = null
+      state.token = ''
+      localStorage.removeItem('user')
+      localStorage.removeItem('token')
+    }
+  },
+  actions: {
+    login({ commit }, { user, token }) {
+      commit('SET_USER', user)
+      commit('SET_TOKEN', token)
+    },
+    logout({ commit }) {
+      commit('LOGOUT')
+    }
+  },
+  modules: {
+  }
+})
+EOL
+
+    # 7. 创建登录页
+    cat > /opt/linuxpanel/ui/src/views/Login.vue <<EOL
+<template>
+  <div class="login-container">
+    <div class="login-box">
+      <div class="logo">
+        <h1>LinuxPanel</h1>
+        <p>轻量级Linux服务器管理面板</p>
+      </div>
+      <el-form ref="loginForm" :model="loginForm" :rules="loginRules" class="login-form">
+        <el-form-item prop="username">
+          <el-input v-model="loginForm.username" placeholder="用户名" prefix-icon="el-icon-user" />
+        </el-form-item>
+        <el-form-item prop="password">
+          <el-input v-model="loginForm.password" type="password" placeholder="密码" prefix-icon="el-icon-lock" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="loading" @click="handleLogin" style="width: 100%">登录</el-button>
+        </el-form-item>
+      </el-form>
+      <div class="login-tips">
+        默认用户名: admin<br>默认密码: admin123
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+export default {
+  name: 'Login',
+  data() {
+    return {
+      loginForm: {
+        username: '',
+        password: ''
+      },
+      loginRules: {
+        username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+        password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+      },
+      loading: false
+    }
+  },
+  methods: {
+    handleLogin() {
+      this.$refs.loginForm.validate(valid => {
+        if (valid) {
+          this.loading = true
+          // 模拟登录请求
+          setTimeout(() => {
+            if (this.loginForm.username === 'admin' && this.loginForm.password === 'admin123') {
+              const user = { name: 'admin', role: 'admin' }
+              const token = 'mock-token-12345'
+              this.$store.dispatch('login', { user, token })
+              this.$router.push('/')
+            } else {
+              this.$message.error('用户名或密码错误')
+            }
+            this.loading = false
+          }, 1000)
+        }
+      })
+    }
+  }
+}
+</script>
+
+<style scoped>
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: linear-gradient(135deg, #8e9eab, #eef2f3);
+}
+.login-box {
+  width: 360px;
+  padding: 30px;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+}
+.logo {
+  text-align: center;
+  margin-bottom: 30px;
+}
+.logo h1 {
+  margin: 0;
+  font-size: 28px;
+  color: #409EFF;
+}
+.logo p {
+  margin: 10px 0 0;
+  font-size: 14px;
+  color: #606266;
+}
+.login-form {
+  margin-bottom: 20px;
+}
+.login-tips {
+  text-align: center;
+  font-size: 12px;
+  color: #909399;
+}
+</style>
+EOL
+
+    # 8. 创建布局组件
+    cat > /opt/linuxpanel/ui/src/views/Layout.vue <<EOL
+<template>
+  <div class="layout">
+    <el-container>
+      <el-aside width="200px">
+        <div class="sidebar">
+          <div class="logo">LinuxPanel</div>
+          <el-menu 
+            :default-active="activeMenu" 
+            class="sidebar-menu"
+            background-color="#304156"
+            text-color="#bfcbd9"
+            active-text-color="#409EFF"
+            router
+          >
+            <el-menu-item index="/dashboard">
+              <i class="el-icon-monitor"></i>
+              <span>仪表盘</span>
+            </el-menu-item>
+            <el-menu-item index="/websites">
+              <i class="el-icon-s-platform"></i>
+              <span>网站管理</span>
+            </el-menu-item>
+            <el-menu-item index="/databases">
+              <i class="el-icon-s-data"></i>
+              <span>数据库</span>
+            </el-menu-item>
+            <el-menu-item index="/files">
+              <i class="el-icon-folder"></i>
+              <span>文件管理</span>
+            </el-menu-item>
+            <el-menu-item index="/store">
+              <i class="el-icon-shopping-bag-1"></i>
+              <span>应用商店</span>
+            </el-menu-item>
+            <el-menu-item index="/settings">
+              <i class="el-icon-setting"></i>
+              <span>系统设置</span>
+            </el-menu-item>
+          </el-menu>
+        </div>
+      </el-aside>
+      <el-container>
+        <el-header>
+          <div class="header-right">
+            <el-dropdown @command="handleCommand">
+              <span class="el-dropdown-link">
+                管理员 <i class="el-icon-arrow-down"></i>
+              </span>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="profile">个人信息</el-dropdown-item>
+                  <el-dropdown-item command="password">修改密码</el-dropdown-item>
+                  <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+        </el-header>
+        <el-main>
+          <router-view />
+        </el-main>
+      </el-container>
+    </el-container>
+  </div>
+</template>
+
+<script>
+export default {
+  name: 'Layout',
+  computed: {
+    activeMenu() {
+      return this.$route.path
+    }
+  },
+  methods: {
+    handleCommand(command) {
+      if (command === 'logout') {
+        this.$store.dispatch('logout')
+        this.$router.push('/login')
+      }
+    }
+  }
+}
+</script>
+
+<style scoped>
+.layout {
+  height: 100vh;
+}
+.el-aside {
+  background-color: #304156;
+  color: #fff;
+  height: 100%;
+}
+.sidebar {
+  height: 100%;
+  overflow-y: auto;
+}
+.logo {
+  height: 60px;
+  line-height: 60px;
+  text-align: center;
+  font-size: 20px;
+  font-weight: bold;
+  color: #409EFF;
+  background-color: #2b3b4e;
+}
+.sidebar-menu {
+  border-right: none;
+}
+.el-header {
+  background-color: #fff;
+  color: #333;
+  line-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+}
+.header-right {
+  margin-right: 20px;
+}
+.el-dropdown-link {
+  cursor: pointer;
+  color: #409EFF;
+}
+.el-main {
+  background-color: #f0f2f5;
+  padding: 20px;
+  height: calc(100vh - 60px);
+  overflow-y: auto;
+}
+</style>
+EOL
+
+    # 9. 创建仪表盘
+    cat > /opt/linuxpanel/ui/src/views/Dashboard.vue <<EOL
+<template>
+  <div class="dashboard">
+    <el-row :gutter="20">
+      <el-col :span="24">
+        <el-card class="welcome-card">
+          <h2>欢迎使用LinuxPanel控制面板</h2>
+          <p>轻量级的Linux服务器管理面板</p>
+        </el-card>
+      </el-col>
+    </el-row>
+    
+    <el-row :gutter="20" style="margin-top: 20px;">
+      <el-col :span="8">
+        <el-card class="metric-card">
+          <div class="metric-title">CPU使用率</div>
+          <div class="metric-value">{{ systemInfo.cpuUsage || 0 }}%</div>
+          <el-progress :percentage="systemInfo.cpuUsage || 0" :color="getStatusColor(systemInfo.cpuUsage || 0)"></el-progress>
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card class="metric-card">
+          <div class="metric-title">内存使用率</div>
+          <div class="metric-value">{{ systemInfo.memoryUsage || 0 }}%</div>
+          <el-progress :percentage="systemInfo.memoryUsage || 0" :color="getStatusColor(systemInfo.memoryUsage || 0)"></el-progress>
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card class="metric-card">
+          <div class="metric-title">磁盘使用率</div>
+          <div class="metric-value">{{ systemInfo.diskUsage || 0 }}%</div>
+          <el-progress :percentage="systemInfo.diskUsage || 0" :color="getStatusColor(systemInfo.diskUsage || 0)"></el-progress>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="20" style="margin-top: 20px;">
+      <el-col :span="12">
+        <el-card class="info-card">
+          <template #header>
+            <div class="card-header">
+              <span>系统信息</span>
+            </div>
+          </template>
+          <div class="info-item">
+            <span class="info-label">主机名</span>
+            <span class="info-value">{{ systemInfo.hostname || '未知' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">操作系统</span>
+            <span class="info-value">{{ systemInfo.os || '未知' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">内核版本</span>
+            <span class="info-value">{{ systemInfo.kernelVersion || '未知' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">CPU核心数</span>
+            <span class="info-value">{{ systemInfo.cpuCores || 0 }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">总内存</span>
+            <span class="info-value">{{ formatBytes(systemInfo.memoryTotal) }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">运行时间</span>
+            <span class="info-value">{{ formatUptime(systemInfo.uptime) }}</span>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card class="info-card">
+          <template #header>
+            <div class="card-header">
+              <span>面板信息</span>
+            </div>
+          </template>
+          <div class="info-item">
+            <span class="info-label">面板版本</span>
+            <span class="info-value">{{ systemInfo.panelVersion || '1.0.0' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Go版本</span>
+            <span class="info-value">{{ systemInfo.goVersion || '1.21.0' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">已安装模块</span>
+            <span class="info-value">核心模块</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">面板运行时间</span>
+            <span class="info-value">{{ formatUptime(systemInfo.panelUptime) || '未知' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">数据库类型</span>
+            <span class="info-value">SQLite</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">面板端口</span>
+            <span class="info-value">8080</span>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+  </div>
+</template>
+
+<script>
+export default {
+  name: 'Dashboard',
+  data() {
+    return {
+      systemInfo: {
+        cpuUsage: 15,
+        memoryUsage: 45,
+        diskUsage: 35,
+        hostname: 'server001',
+        os: 'Debian 11',
+        kernelVersion: '5.10.0-15-amd64',
+        cpuCores: 4,
+        memoryTotal: 8589934592, // 8GB in bytes
+        uptime: 422400, // 5 days in seconds
+        panelVersion: '1.0.0',
+        goVersion: '1.21.0',
+        panelUptime: 86400 // 1 day in seconds
+      }
+    }
+  },
+  mounted() {
+    // 这里应该获取真实的系统信息
+    this.getSystemInfo()
+  },
+  methods: {
+    getSystemInfo() {
+      // 这里应该是真实的API调用
+      // fetch('/api/system/info')...
+    },
+    getStatusColor(value) {
+      if (value < 60) return '#67C23A' // 绿色
+      if (value < 80) return '#E6A23C' // 黄色
+      return '#F56C6C' // 红色
+    },
+    formatBytes(bytes) {
+      if (!bytes) return '0 B'
+      const k = 1024
+      const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+      const i = Math.floor(Math.log(bytes) / Math.log(k))
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+    },
+    formatUptime(seconds) {
+      if (!seconds) return '未知'
+      const days = Math.floor(seconds / 86400)
+      const hours = Math.floor((seconds % 86400) / 3600)
+      const minutes = Math.floor(((seconds % 86400) % 3600) / 60)
+      
+      let result = ''
+      if (days > 0) result += days + '天 '
+      if (hours > 0) result += hours + '小时 '
+      if (minutes > 0) result += minutes + '分钟'
+      
+      return result || '刚刚启动'
+    }
+  }
+}
+</script>
+
+<style scoped>
+.dashboard {
+  padding: 20px;
+}
+.welcome-card {
+  text-align: center;
+  padding: 20px;
+}
+.welcome-card h2 {
+  color: #409EFF;
+  margin-top: 0;
+}
+.metric-card {
+  text-align: center;
+  padding: 20px;
+}
+.metric-title {
+  font-size: 16px;
+  margin-bottom: 10px;
+  color: #606266;
+}
+.metric-value {
+  font-size: 28px;
+  font-weight: bold;
+  margin-bottom: 10px;
+  color: #303133;
+}
+.info-card {
+  margin-bottom: 20px;
+}
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #EBEEF5;
+}
+.info-item:last-child {
+  border-bottom: none;
+}
+.info-label {
+  color: #606266;
+}
+.info-value {
+  color: #303133;
+  font-weight: 500;
+}
+</style>
+EOL
+
+    # 10. 创建全局样式
+    cat > /opt/linuxpanel/ui/src/styles/global.css <<EOL
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
+}
+
+.el-card {
+  border-radius: 4px;
+  border: none;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+.el-card__header {
+  padding: 15px 20px;
+  font-weight: bold;
+  border-bottom: 1px solid #EBEEF5;
+}
+
+.el-card__body {
+  padding: 20px;
+}
+EOL
+
+    # 创建一个打包好的前端dist目录
     mkdir -p /opt/linuxpanel/ui/dist
     
-    # 创建占位页面
+    # 复制基本HTML到dist目录
     cat > /opt/linuxpanel/ui/dist/index.html <<EOL
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LinuxPanel</title>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>LinuxPanel - 轻量级Linux服务器管理面板</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f6f9;
+        html, body {
             margin: 0;
             padding: 0;
+            height: 100%;
+            font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
+        }
+        #app {
+            height: 100%;
+        }
+        .loading-container {
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            color: #333;
+            height: 100%;
+            background-color: #f5f7fa;
         }
-        .container {
-            text-align: center;
-            background-color: white;
-            border-radius: 10px;
-            padding: 40px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-            max-width: 600px;
-        }
-        h1 {
+        .loading-title {
+            font-size: 24px;
             color: #409EFF;
             margin-bottom: 20px;
         }
-        p {
-            line-height: 1.6;
+        .loading-subtitle {
+            font-size: 16px;
+            color: #606266;
+            margin-bottom: 30px;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #409EFF;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .login-form {
+            width: 350px;
+            padding: 30px;
+            background-color: #fff;
+            border-radius: 5px;
+            box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+            margin-top: 30px;
+        }
+        .form-title {
+            text-align: center;
+            font-size: 20px;
+            color: #303133;
+            margin-bottom: 25px;
+        }
+        .form-group {
             margin-bottom: 20px;
         }
-        .status {
-            display: inline-block;
-            background-color: #67C23A;
-            color: white;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-weight: bold;
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: #606266;
         }
-        .info {
-            margin-top: 30px;
-            font-size: 0.9em;
-            color: #666;
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #dcdfe6;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 14px;
+            color: #606266;
+        }
+        input:focus {
+            outline: none;
+            border-color: #409EFF;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #409EFF;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #66b1ff;
+        }
+        .form-footer {
+            text-align: center;
+            font-size: 12px;
+            color: #909399;
+            margin-top: 20px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>LinuxPanel 面板已成功安装</h1>
-        <p>面板后端服务正常运行中</p>
-        <div class="status">运行中</div>
-        <div class="info">
-            <p>您可以通过应用商店安装Nginx、MySQL和PHP等服务</p>
-            <p>默认管理员账户: admin</p>
-            <p>默认密码: admin123</p>
-            <p>API地址: http://localhost:8080/api</p>
+    <div id="app">
+        <div class="loading-container">
+            <div class="loading-title">LinuxPanel</div>
+            <div class="loading-subtitle">轻量级Linux服务器管理面板</div>
+            <div class="login-form">
+                <div class="form-title">用户登录</div>
+                <div class="form-group">
+                    <label for="username">用户名</label>
+                    <input type="text" id="username" placeholder="请输入用户名">
+                </div>
+                <div class="form-group">
+                    <label for="password">密码</label>
+                    <input type="password" id="password" placeholder="请输入密码">
+                </div>
+                <button id="login-btn">登录</button>
+                <div class="form-footer">
+                    默认用户名: admin<br>默认密码: admin123
+                </div>
+            </div>
         </div>
     </div>
+    <script>
+        document.getElementById('login-btn').addEventListener('click', function() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            if (username === 'admin' && password === 'admin123') {
+                alert('登录成功！实际面板正在开发中，这是临时登录页面。');
+            } else {
+                alert('用户名或密码错误');
+            }
+        });
+    </script>
 </body>
 </html>
 EOL
-    
-    echo -e "${GREEN}前端占位创建完成${NC}"
+
+    echo -e "${GREEN}前端界面搭建完成${NC}"
+    echo -e "${YELLOW}注意: 这是一个基本的前端框架，后续可以通过应用商店完善功能${NC}"
 }
 
 # 创建配置文件
@@ -698,7 +1461,7 @@ main() {
     update_go_dependencies
     create_code_files
     build_backend
-    create_frontend_placeholder
+    build_frontend
     create_config
     create_service
     configure_firewall
